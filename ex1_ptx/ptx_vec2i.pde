@@ -83,5 +83,12 @@ public class vec2i {
   public boolean diffFrom(vec2i _a) { 
     return !(x == _a.x && y == _a.y);
   }
-  
+
+  public float length() {
+    return sqrt(x*x + y*y);
+  }
+
+  public float squaredLength() {
+    return x*x + y*y;
+  }
 }

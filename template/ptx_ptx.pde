@@ -15,26 +15,29 @@
  *  along with the PTX library.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
- 
+
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.Collections;
 
+import java.util.Arrays;
+import java.util.Comparator;
+
 
 public enum DIRECTION { EAST, WEST, NORTH, SOUTH };
 
 
- /**
-* This class defines the core algorithm for drawing recognition and
-* optical processing.
-*
-*
-* @author  Roman Miletitch
-* @version 0.7
-*
-**/
- //<>//
+/**
+ * This class defines the core algorithm for drawing recognition and
+ * optical processing.
+ *
+ *
+ * @author  Roman Miletitch
+ * @version 0.7
+ *
+ **/
+//<>//
 public class ptx {
 
   ArrayList<area> listArea; 
@@ -57,7 +60,6 @@ public class ptx {
 
   // OPTICS PROJECTOR
   float rotX_projo, rotY_projo, rotZ_projo;
-  float ecart_projo;
   float transX_projo, transY_projo, transZ_projo;
 
   // Local but not so local
@@ -74,6 +76,9 @@ public class ptx {
 
   public float flashLeft, flashRight, flashUp, flashDown;
 
+  public int tooSmallThreshold;
+  public int tooSmallContourThreshold;
+  
   // TEMP
   public float seuil_ratioSurfacePerimetre;
   public float seuil_tailleSurface;
@@ -81,6 +86,9 @@ public class ptx {
 
   public ptx() {
 
+    tooSmallThreshold = 40;
+    tooSmallContourThreshold = 33;
+    
     backHue = new hueInterval();
     hasBackHue = false;
 
@@ -114,7 +122,6 @@ public class ptx {
     rotX_projo = 0; 
     rotY_projo = 0; 
     rotZ_projo = 0;
-    ecart_projo =1;
     transX_projo =0; 
     transY_projo =0; 
     transZ_projo = 0;
@@ -138,11 +145,11 @@ public class ptx {
     seuil_smallArea = 200;
   }
 
-  
+
   /** 
-  * Calculate two parametrs for the geometric correction on the camera picture.
-  * @param _ROI          the 4 points defining the region of interest
-  */
+   * Calculate two parametrs for the geometric correction on the camera picture.
+   * @param _ROI          the 4 points defining the region of interest
+   */
   public void calcA0A1(vec2f[] _ROI) {
 
     vec2f o = _ROI[0];
@@ -162,15 +169,15 @@ public class ptx {
   }
 
   /** 
-  * Apply the geometric correction on the camera picture.
-  * @param _in     Origine Image
-  * @param _out    Destination Image
-  * @param  _wBef  width of the origine image 
-  * @param  _hBef  height of the origine image 
-  * @param  _wAft  width of the destination image 
-  * @param  _hAft  height of the destination image 
-  * @param  _ROI   the 4 points defining the region of interest
-  */
+   * Apply the geometric correction on the camera picture.
+   * @param _in     Origine Image
+   * @param _out    Destination Image
+   * @param  _wBef  width of the origine image 
+   * @param  _hBef  height of the origine image 
+   * @param  _wAft  width of the destination image 
+   * @param  _hAft  height of the destination image 
+   * @param  _ROI   the 4 points defining the region of interest
+   */
   public void trapeze(PImage _in, PImage _out, int _wBef, int _hBef, int _wAft, int _hAft, vec2f[] _ROI) {
 
     ratioCam = ((float)_hAft)/_hBef;
@@ -205,7 +212,7 @@ public class ptx {
 
         // TEST SI PAS HORS IMAGE  
         if (ii < _wBef && jj < _hBef && ii > 0 && jj > 0) {
-          _out.pixels[j*_wAft + i] = _in.pixels[jj*_wBef + ii]; //<>// //<>// //<>// //<>// //<>// //<>// //<>// //<>// //<>// //<>//
+          _out.pixels[j*_wAft + i] = _in.pixels[jj*_wBef + ii]; //<>// //<>// //<>// //<>// //<>// //<>// //<>// //<>// //<>// //<>// //<>//
         }
       }
 
@@ -216,14 +223,14 @@ public class ptx {
   }
 
   /** 
-  * Main function that calls other sub function in order to
-  * parse the selected image and get the list of areas.
-  * @param   in           Origine image
-  * @param   outFilter    Filtered image
-  * @param   outRez       End result image 
-  * @param   _w           width of the image
-  * @param   _h           height of the image
-  */
+   * Main function that calls other sub function in order to
+   * parse the selected image and get the list of areas.
+   * @param   in           Origine image
+   * @param   outFilter    Filtered image
+   * @param   outRez       End result image 
+   * @param   _w           width of the image
+   * @param   _h           height of the image
+   */
   public boolean parseImage(PImage in, PImage outFilter, PImage outRez, int _w, int _h) {
 
     System.out.println("----------------------------------");
@@ -294,27 +301,34 @@ public class ptx {
     System.out.println("7) Describe shape, in: " + (System.currentTimeMillis()-locStart) );
     locStart = System.currentTimeMillis();
 
-    // A l'arrache, idArea
-
-
+    // A l'arrache, idArea ids (colId);
     for (area it : listArea)
-      for (vec2i itPos : it.posXY)
-        idsArea[itPos.y * _w + itPos.x] = it.id; 
+      for (vec2i itPos : it.posXY) {
+        idsArea[itPos.y * _w + itPos.x] = it.id;
+        ids[itPos.y * _w + itPos.x] = it.colId;
+      }
+    System.out.println("7.5) update ids & idAreas, in: " + (System.currentTimeMillis()-locStart) );
+    locStart = System.currentTimeMillis();
 
+    // 8) PROXIMITY SHAPES
+    proximityArea();
+    System.out.println("8) List proximity shape, in: " + (System.currentTimeMillis()-locStart) );
+    locStart = System.currentTimeMillis();
 
     System.out.println("------------------------" );
     System.out.println("---- TOTAL, in: " + (System.currentTimeMillis()-globStart) );
 
     System.out.println("Post nbr Area: " + listArea.size() );
 
+
     return true;
   }
 
   /** 
-  * Reset all information from previous scans, allowing for a fresh new one.
-  * @param  _w    width of the image
-  * @param  _h    height of the image
-  */
+   * Reset all information from previous scans, allowing for a fresh new one.
+   * @param  _w    width of the image
+   * @param  _h    height of the image
+   */
   public void reset(int _w, int _h) {
     pixest.clear();
     listArea.clear();
@@ -334,13 +348,13 @@ public class ptx {
   }
 
   /** 
-  * Isolate the color part of the image, mainly based on saturation
-  * @param  in          Source Image
-  * @param  outFilter   Destination Image Filtered
-  * @param  outRez      Destination Image Result
-  * @param  _w          width of the image
-  * @param  _h          height of the image
-  */
+   * Isolate the color part of the image, mainly based on saturation
+   * @param  in          Source Image
+   * @param  outFilter   Destination Image Filtered
+   * @param  outRez      Destination Image Result
+   * @param  _w          width of the image
+   * @param  _h          height of the image
+   */
   //  public boolean isolateForeground(uint8_t* in, uint8_t* outFilter, uint8_t* outRez, int _w, int _h) {
   public boolean isolateForeground(PImage in, PImage outFilter, PImage outRez, int _w, int _h) {
     int sizeDrawing = 0;
@@ -368,7 +382,7 @@ public class ptx {
         // == Matching hue
         // && hueRef[ int(360 * cT.getH()) ] != -1
         // == Not the color of the "background"
-                && ( !hasBackHue || !backHue.contains( floor(360*cT.getH()) ))
+        && ( !hasBackHue || !backHue.contains( floor(360*cT.getH()) ))
         // == Mask Disk
         //        && (i%_w-_w*0.5)*(i%_w-_w*0.5) + (i/_w-_h*0.5)*(i/_w-_h*0.5) < rMask*rMask 
         ) {
@@ -418,11 +432,11 @@ public class ptx {
   }
 
   /** 
-  * Smoothing the resulting information (blur algo, black & white)
-  * @param  _w          width of the image
-  * @param  _h          height of the image
-  * @param  outFilter   Image to process
-  */
+   * Smoothing the resulting information (blur algo, black & white)
+   * @param  _w          width of the image
+   * @param  _h          height of the image
+   * @param  outFilter   Image to process
+   */
   public void smooth(int _w, int _h, PImage outFilter) {
 
     System.out.println("size: " + pixest.size());
@@ -481,11 +495,11 @@ public class ptx {
   }
 
   /** 
-  * Extract region as group of pixels for each colors.
-  * This functions generate the areas that we will then process further.
-  * @param  _w          width of the image
-  * @param  _h          height of the image
-  */
+   * Extract region as group of pixels for each colors.
+   * This functions generate the areas that we will then process further.
+   * @param  _w          width of the image
+   * @param  _h          height of the image
+   */
   public void extractRegions(int _w, int _h) {
 
     int[] data = ids.clone();
@@ -576,23 +590,23 @@ public class ptx {
       for (int i = 0; i < listZone.size(); ++i)
         if ( listZone.get(i).contains(it.hue) )
           it.colId = i;
-          
+
     System.out.println("First nbr Area: " + listArea.size() );
   }
-  
-  
+
+
   /** 
-  * Removes area which size (surface) is under a threshold
-  * @param  _w          width of the image
-  * @param  _h          height of the image
-  */
+   * Removes area which size (surface) is under a threshold
+   * @param  _w          width of the image
+   * @param  _h          height of the image
+   */
   public void removeSmallAreas(int _w, int _h) {
 
     Iterator<area> myArea = listArea.iterator();
     while (myArea.hasNext()) {
       area it = myArea.next(); // must be called before you can call i.remove()
 
-      if (it.posXY.size() <= 40) {
+      if (it.posXY.size() <= tooSmallThreshold) {
         for (vec2i itPos : it.posXY) {
           ids[itPos.y * _w + itPos.x] = -1; // reset ids
           idsArea[itPos.y * _w + itPos.x] = -1; // reset ids
@@ -603,13 +617,13 @@ public class ptx {
   }
 
   /** 
-  * Extract controur from the regions previously extracted.
-  * Both information is available in the area class.
-  * @param  _w          width of the image
-  * @param  _h          height of the image
-  */
+   * Extract controur from the regions previously extracted.
+   * Both information is available in the area class.
+   * @param  _w          width of the image
+   * @param  _h          height of the image
+   */
   public void detectContour(int _w, int _h) {
-    
+
     // 0 === Compute Center by averaging
     for (area it : listArea) {
       for (vec2i itPx : it.posXY)
@@ -617,8 +631,8 @@ public class ptx {
       it.center.x /= it.posXY.size();
       it.center.y /= it.posXY.size();
     }
-    
-    
+
+
     for (area it : listArea) {
 
       ArrayList<vec2i> disContour = new ArrayList<vec2i>();
@@ -692,10 +706,10 @@ public class ptx {
 
 
   /** 
-  * Removes area which perimeter (contour) is under a threshold
-  * @param  _w          width of the image
-  * @param  _h          height of the image
-  */
+   * Removes area which perimeter (contour) is under a threshold
+   * @param  _w          width of the image
+   * @param  _h          height of the image
+   */
   public void removeAeraWithSmallContour(int _w, int _h) {
 
     for (area it : listArea) {
@@ -703,7 +717,7 @@ public class ptx {
 
       while (itContour.hasNext()) {
         ArrayList<vec2i> presContour = itContour.next(); // must be called before you can call i.remove()
-        if (presContour.size() < 33) { //not enough to create a real 2D shape
+        if (presContour.size() < tooSmallContourThreshold) { //not enough to create a real 2D shape
           itContour.remove();
         }
       }
@@ -725,8 +739,8 @@ public class ptx {
   }
 
   /** 
-  * Adding spacial descriptors to all area extracted from the drawing.
-  */
+   * Adding spacial descriptors to all area extracted from the drawing.
+   */
   public void describeShape() {
 
     for (area it : listArea) {
@@ -734,26 +748,69 @@ public class ptx {
       if (it.listContour.size() > 1) {
         it.myShape = area_shape.GAP;
       } else {
-        
+
         if (it.posXY.size() < seuil_tailleSurface) {
-            it.myShape = area_shape.DOT;           
+          it.myShape = area_shape.DOT;
         } else {
-          
+
           //      if (it->disContour.size() > 1.3 * std::sqrt(4 * 3 * it->posXY.size())) {
           if (it.listContour.get(0).size() > seuil_ratioSurfacePerimetre * Math.sqrt(4 * 3 * it.posXY.size())) {
             it.myShape = area_shape.LINE;
           } else {
-              it.myShape = area_shape.FILL;
-         
-          
+            it.myShape = area_shape.FILL;
           }
-        
         }
       }
     }
   }
 
-  
+
+  void proximityArea() {
+
+    int k = 3;
+    ArrayList<vec2i> contA = new ArrayList<vec2i>(), contB = new ArrayList<vec2i>();
+    vec2i dist = new vec2i(), temp = new vec2i(), from = new vec2i(), to = new vec2i();
+
+    for (int i = 0; i < listArea.size(); ++i)
+      for (int j = i + 1; j < listArea.size(); ++j) {
+
+        contA = listArea.get(i).listContour.get(0);
+        contB = listArea.get(j).listContour.get(0);
+        dist = contB.get(0).subTo( contA.get(0) );
+
+        from = contA.get(0);
+        to = contB.get(0);
+
+        for (int ii = 0; ii < contA.size(); ii+=k)
+          for (int jj = 0; jj < contB.size(); jj+=k) {
+            temp = contB.get(jj).subTo( contA.get(ii) );
+            if (temp.squaredLength() < dist.squaredLength()) {
+              dist = temp;
+              from = contA.get(ii);
+              to = contB.get(jj);
+            }
+          }
+
+        listArea.get(i).listProx.add(new proxArea(listArea.get(j).id, listArea.get(j).center, dist, from, to));
+        listArea.get(j).listProx.add(new proxArea(listArea.get(i).id, listArea.get(i).center, dist.multBy(-1), to, from));
+      }
+
+
+    // Sort by proximity
+    //    for (area itA : listArea)
+    //      Arrays.sort(itA.listProx, new SortbyDist()); 
+    ////      std::sort(itA->listProx.begin(), itA->listProx.end(), &compareDist);
+
+
+    for (area itA : listArea)
+      Collections.sort(itA.listProx, new Comparator<proxArea>() {
+        @Override
+          public int compare(proxArea _a, proxArea _b) {
+          return (_a.pos.x*_a.pos.x + _a.pos.y*_a.pos.y) - (_b.pos.x*_b.pos.x + _b.pos.y*_b.pos.y);
+        }
+      }
+    );
+  }
 
 
   DIRECTION toTheLeft(DIRECTION currentDir) {

@@ -70,5 +70,8 @@ public class vec2f {
   public vec2f divBy(float _k) { 
     return new vec2f(x / _k, y / _k  );
   }
-
+  
+  public float length() {
+    return sqrt(x*x + y*y);
+  }
 }

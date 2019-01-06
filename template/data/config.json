@@ -19,6 +19,7 @@
   "rotX_projo": 0,
   "UpperRightX": 400,
   "transY_projo": 441,
+  "tooSmallContourThreshold": 33,
   "flashDown": 0,
   "blueMax": 270,
   "grayLevelUp": 126,
@@ -38,5 +39,6 @@
   "yellowMax": 80,
   "backMin" : 0,
   "backMax" : 0,
-  "idCam": 40
+  "idCam": 40,
+  "tooSmallThreshold": 40
 }

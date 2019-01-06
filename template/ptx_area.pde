@@ -16,7 +16,34 @@
  *
  */
   
-public enum area_shape {DOT, LINE, GAP, FILL};
+  import java.util.*;
+
+  public enum area_shape {DOT, LINE, GAP, FILL};
+
+ /**
+* This class describe what an area of proximity is in the context of the ptx library.
+* Area of proximity are a simplification of an area,
+* and used to list the proximities of areas with one another
+*
+* @author  Roman Miletitch
+* @version 0.7
+*
+**/
+
+public class proxArea {
+  proxArea(int _id, vec2i _center, vec2i _pos, vec2i _from, vec2i _to) {
+    id =_id;
+    pos = _pos;
+    from = _from;
+    center = _center;
+    to = _to;
+  }
+
+  int id;
+  vec2i pos;
+  vec2i center;
+  vec2i from, to;
+};
 
  /**
 * This class describe what an area is in the context of the ptx library.
@@ -41,10 +68,18 @@ public class area {
   ArrayList<vec2i> posXY;
   ArrayList< ArrayList<vec2i> > listContour;
 
+  // Relation to other areas
+  ArrayList<proxArea> listProx; // relative positions of other areas
+  ArrayList<Integer> listOverMe; // Areas that contains me
+  ArrayList<Integer> listInsideMe; // Areas that I contain
+  ArrayList<proxArea> listContact; // relative positions of touched areas
+  
   public area() {
     center = new vec2i();
     posXY = new ArrayList<vec2i>(); 
     listContour = new ArrayList< ArrayList<vec2i> >(); 
+    listProx = new ArrayList<proxArea>();
+    listContact  = new ArrayList<proxArea>();
   }
   
   public area(int _id, vec2i _pos, int _hue) {
@@ -57,6 +92,8 @@ public class area {
     posXY = new ArrayList<vec2i>(); 
     posXY.add(_pos);
     listContour = new ArrayList< ArrayList<vec2i> >(); 
+    listProx = new ArrayList<proxArea>();
+    listContact  = new ArrayList<proxArea>();
   }
   
 }

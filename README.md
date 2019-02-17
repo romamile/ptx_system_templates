@@ -8,6 +8,6 @@ This library aims at giving you descriptors of any drawing you would feed it (wo
 
 On top of that, this library deals with all the optical shenanigans necessary for an easy process. From capturing your image from a camera to project it on top of your drawing, everything should be here. We even added on top an interface to make the calibration process easier.
 
-If you're getting started, best would be to check our [intro on wiki](https://github.com/zharkov/ptx_system/wiki). If you want to dig deeper, then you should go explore our [java doc](http://zharkov.github.io/ptx_system).
+If you're getting started, best would be to check our [intro on wiki](https://github.com/zharkov/ptx_system/wiki). If you want to dig deeper, then you should go explore our (need to be updated, be still good enough) [java doc](http://zharkov.github.io/ptx_system). If you have any questions, don't hesitate to contact us, would that be through github or from our website.
 
 For now, the library is an ensemble of file to use in Processing. First thing in the todo list is to transform it into a full-fedged Processing Library. Another version exist for C++ (used in our team with Cinder library), so if it's more your alley, be sure to ask us for this working-but-less-accessible version.

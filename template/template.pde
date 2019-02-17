@@ -1,14 +1,12 @@
+
 // ===== 1) ROOT LIBRARY =====
 boolean isScanning, isInConfig;
 ptx_inter myPtxInter;
 char scanKey = 'a';
-char configKey = 'z';
 // ===== =============== =====
 
-
 int x, y;
-
-
+  
 void setup() {
 
   // ===== 2) INIT LIBRARY =====  
@@ -19,15 +17,17 @@ void setup() {
   // ===== =============== =====
 
 
-  fullScreen(P3D);
+  //fullScreen(P3D);
+  size(1300, 900, P3D);
   noCursor();
 
   x = myPtxInter.wFrameFbo/2;
   y = myPtxInter.hFrameFbo/2;
+  
 }
 
 void draw() {
-
+    
   // ===== 3) SCANNING & CONFIG DRAW LIBRARY =====  
   if (isScanning) {
     background(0);
@@ -62,7 +62,7 @@ void draw() {
 
 
   // Keep this part of the code to reset drawing
-  background(0);
+  background(10);
   myPtxInter.mFbo.beginDraw();
 
   // Draw here with "myPtxInter.mFbo" before call to classic drawing functions 
@@ -72,11 +72,12 @@ void draw() {
   myPtxInter.mFbo.ellipse(x, y, 20, 20);
   
   for(area refArea : myPtxInter.getListArea())
-    myPtxInter.drawArea(refArea);
+    refArea.draw(1);
 
   // Keep this part of the code to reset drawing
   myPtxInter.mFbo.endDraw();
   myPtxInter.displayFBO();
+
 }
 
 
@@ -99,12 +100,14 @@ void keyPressed() {
     return;
   }
 
-  // Master key #1 / 2, that switch between your project and the configuration interface
-  if (key == configKey) {
-    isInConfig = !isInConfig;
+  myPtxInter.managementKeyPressed();
+
+  if (isInConfig) {
+    myPtxInter.keyPressed();
     return;
   }
 
+   
   // Master key #2 / 2, that launch the scanning process
   if (key == scanKey && !isScanning) {
     myPtxInter.whiteCtp = 0;
@@ -112,16 +115,11 @@ void keyPressed() {
     return;
   }
 
-  // Set of key config in the the input mode
-  if (isInConfig) {
-    myPtxInter.keyPressed();
-    return;
-  }
-
   // ===== ================================= =====    
 
 
   if (key==CODED) {
+    println(keyCode);
     switch(keyCode) {
     case UP:    
       y-=5; 
@@ -134,7 +132,7 @@ void keyPressed() {
       break;
     case RIGHT: 
       x+=5; 
-      break;
+      break;    
     }
   }
 }
@@ -154,28 +152,42 @@ void mousePressed() {
 
   // ===== 6) MOUSE HANDLIND LIBRARY ===== 
 
-  if (isInConfig && myPtxInter.myGlobState == globState.CAMERA && mouseButton == LEFT) {
+  if (isInConfig && myPtxInter.myGlobState == globState.CAMERA  && myPtxInter.myCamState == cameraState.CAMERA_WHOLE && mouseButton == LEFT) {
 
-    if (myPtxInter.myCam.dotIndex == -1)
-      myPtxInter.myCam.dotIndex = 0; // Switching toward editing 
-    else
-      myPtxInter.myCam.ROI[myPtxInter.myCam.dotIndex++  ] =
-        new vec2f(mouseX * myPtxInter.myCam.mImg.width / width, 
-        mouseY * myPtxInter.myCam.mImg.height / height);
-
-    if ( myPtxInter.myCam.dotIndex == 4)
-      myPtxInter.myCam.dotIndex = -1;
+    // Select one "dot" of ROI if close enough
+    myPtxInter.myCam.dotIndex = -1;
+    for(int i = 0; i < 4; ++i) {
+      if( (myPtxInter.myCam.ROI[i].subTo( new vec2f(mouseX, mouseY) ).length()) < 50 ) {
+        myPtxInter.myCam.dotIndex = i;
+      }
+      
+    }
   }
+
   // ===== ========================= =====
 }
 
-void mouseMoved() {
+void mouseDragged() {
 
   // ===== 7) MOUSE HANDLIND LIBRARY ===== 
+  
+    if (isInConfig && myPtxInter.myGlobState == globState.CAMERA) {
+       if (myPtxInter.myCam.dotIndex != -1) {
+         myPtxInter.myCam.ROI[myPtxInter.myCam.dotIndex].addMe( new vec2f(mouseX-pmouseX, mouseY - pmouseY) ); 
+       }
+    }
 
-  if (isInConfig && myPtxInter.myGlobState == globState.CAMERA && myPtxInter.myCam.dotIndex != -1)
-    myPtxInter.myCam.ROI[myPtxInter.myCam.dotIndex] =
-      new vec2f(mouseX * myPtxInter.myCam.mImg.width  / width, 
-      mouseY * myPtxInter.myCam.mImg.height / height);
   // ===== ========================= =====
+}
+
+void mouseReleased() {
+  
+  if (isInConfig && myPtxInter.myGlobState == globState.CAMERA  && myPtxInter.myCamState == cameraState.CAMERA_WHOLE)
+       if (myPtxInter.myCam.dotIndex != -1) {
+         myPtxInter.myPtx.calculateHomographyMatrice(myPtxInter.wFrameFbo, myPtxInter.hFrameFbo, myPtxInter.myCam.ROI);
+         myPtxInter.scanCam();
+       }
+
+  
+  
 }

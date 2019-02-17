@@ -74,4 +74,9 @@ public class vec2f {
   public float length() {
     return sqrt(x*x + y*y);
   }
+  
+    
+  public String toString() {
+    return "(" + x + "," + y + ")";
+  }
 }

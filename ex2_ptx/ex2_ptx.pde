@@ -2,7 +2,6 @@
 boolean isScanning, isInConfig;
 ptx_inter myPtxInter;
 char scanKey = 'a';
-char configKey = 'z';
 // ===== =============== =====
 
 
@@ -65,7 +64,7 @@ void draw() {
   for(particle it: parList)
     it.update();
     
-    println(parList.size() + " - " + frameRate);
+    //println(parList.size() + " - " + frameRate);
 
   for(int i = parList.size()-1; i>=0; --i)
     if(parList.get(i).r >= 700)
@@ -80,7 +79,7 @@ void draw() {
   
   
   for(area refArea : myPtxInter.getListArea())
-    myPtxInter.drawArea(refArea);
+    refArea.draw(1);
     
     
   for(particle it: parList)
@@ -114,11 +113,7 @@ void keyPressed() {
     return;
   }
 
-  // Master key #1 / 2, that switch between your project and the configuration interface
-  if (key == configKey) {
-    isInConfig = !isInConfig;
-    return;
-  }
+  myPtxInter.managementKeyPressed();
 
   // Master key #2 / 2, that launch the scanning process
   if (key == scanKey && !isScanning) {
@@ -153,28 +148,42 @@ void mousePressed() {
 
   // ===== 6) MOUSE HANDLIND LIBRARY ===== 
 
-  if (isInConfig && myPtxInter.myGlobState == globState.CAMERA && mouseButton == LEFT) {
+  if (isInConfig && myPtxInter.myGlobState == globState.CAMERA  && myPtxInter.myCamState == cameraState.CAMERA_WHOLE && mouseButton == LEFT) {
 
-    if (myPtxInter.myCam.dotIndex == -1)
-      myPtxInter.myCam.dotIndex = 0; // Switching toward editing 
-    else
-      myPtxInter.myCam.ROI[myPtxInter.myCam.dotIndex++  ] =
-        new vec2f(mouseX * myPtxInter.myCam.mImg.width / width, 
-        mouseY * myPtxInter.myCam.mImg.height / height);
-
-    if ( myPtxInter.myCam.dotIndex == 4)
-      myPtxInter.myCam.dotIndex = -1;
+    // Select one "dot" of ROI if close enough
+    myPtxInter.myCam.dotIndex = -1;
+    for(int i = 0; i < 4; ++i) {
+      if( (myPtxInter.myCam.ROI[i].subTo( new vec2f(mouseX, mouseY) ).length()) < 50 ) {
+        myPtxInter.myCam.dotIndex = i;
+      }
+      
+    }
   }
+
   // ===== ========================= =====
 }
 
-void mouseMoved() {
+void mouseDragged() {
 
   // ===== 7) MOUSE HANDLIND LIBRARY ===== 
+  
+    if (isInConfig && myPtxInter.myGlobState == globState.CAMERA) {
+       if (myPtxInter.myCam.dotIndex != -1) {
+         myPtxInter.myCam.ROI[myPtxInter.myCam.dotIndex].addMe( new vec2f(mouseX-pmouseX, mouseY - pmouseY) ); 
+       }
+    }
 
-  if (isInConfig && myPtxInter.myGlobState == globState.CAMERA && myPtxInter.myCam.dotIndex != -1)
-    myPtxInter.myCam.ROI[myPtxInter.myCam.dotIndex] =
-      new vec2f(mouseX * myPtxInter.myCam.mImg.width  / width, 
-      mouseY * myPtxInter.myCam.mImg.height / height);
   // ===== ========================= =====
+}
+
+void mouseReleased() {
+  
+  if (isInConfig && myPtxInter.myGlobState == globState.CAMERA  && myPtxInter.myCamState == cameraState.CAMERA_WHOLE)
+       if (myPtxInter.myCam.dotIndex != -1) {
+         myPtxInter.myPtx.calculateHomographyMatrice(myPtxInter.wFrameFbo, myPtxInter.hFrameFbo, myPtxInter.myCam.ROI);
+         myPtxInter.scanCam();
+       }
+
+  
+  
 }

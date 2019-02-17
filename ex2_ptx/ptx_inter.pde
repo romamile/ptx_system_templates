@@ -19,6 +19,8 @@
 import java.lang.System.*;
 import java.awt.event.KeyEvent;
 
+import deadpixel.keystone.*;
+
 public enum globState { MIRE, CAMERA, RECOG };
 public enum recogState { RECOG_GRAY, RECOG_ROI, RECOG_BACK, RECOG_COL, RECOG_AREA, RECOG_CONTOUR, RECOG_ORIENTED };
 public enum cameraState { CAMERA_WHOLE, CAMERA_ZOOM }; 
@@ -63,7 +65,13 @@ public class ptx_inter {
   // Frame Buffer Object
   int wFrameFbo, hFrameFbo;
   PGraphics mFbo;
-  float ecart_projo; // For now here...
+  
+  
+  Keystone ks;
+  CornerPinSurface surface;
+  
+  vec2f[] ROIproj;
+  int dotIndex;
 
 
   ptx_inter(PApplet _myParent) {
@@ -77,31 +85,35 @@ public class ptx_inter {
     togUI = new toggle();
     togUI.setSpanS(1);
     strUI = "";
+    
+    hFrameFbo = 757;
+    float ratioFbo = (width*1.0)/height; // = 37.f / 50;
+    wFrameFbo = int(hFrameFbo * ratioFbo);
 
     myPtx = new ptx();
+    //myPtx = new ptx(); myPtx.opencv = new OpenCV(_myParent, loadImage("./cards.png"));
     myCam = new cam();
 
-    ecart_projo = 1;
     grayLevelUp   = 126;
     grayLevelDown = 126;
 
     // SCAN
     whiteCtp = 0;
 
+    ks = new Keystone(_myParent);
+    surface = ks.createCornerPinSurface(wFrameFbo, hFrameFbo, 20);
+    
     // Load configuration file
     File f = new File(dataPath("config.json"));
     if (!f.exists()) saveConfig();
     else             loadConfig();
 
-    hFrameFbo = 757;
-    float ratioFbo = (width*1.0)/height * ecart_projo;
-    //  wFrameFbo = int(hFrameFbo * 37.f / 50);
-    wFrameFbo = int(hFrameFbo * ratioFbo);
-    //  println(hFrameFbo + ", " + wFrameFbo);
     mFbo = createGraphics(wFrameFbo, hFrameFbo, P3D);
     myCam.resize(wFrameFbo, hFrameFbo);
-   
+    
     myCam.startFromId(idCam, _myParent);
+    myPtx.opencv = new OpenCV(_myParent, createImage(myCam.wCam, myCam.hCam, ARGB));
+    myPtx.calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
 
     // First scan (check if not over kill, already one update in file)
     //    myCam.update(); myCam.update(); myCam.update(); myCam.update(); myCam.update();
@@ -109,7 +121,7 @@ public class ptx_inter {
     scanClr();
   }
 
-  
+
   /** 
    * Helper functions to access all the scanned areas.
    * @return              <code>ArrayList<area></code> corresponding to the list of all Areas
@@ -142,7 +154,7 @@ public class ptx_inter {
     myCam.updateImg();
 
     // TEMP DEBUG
-    myCam.mImgCroped.save("./data/drawings/img_"+millis()+".png");
+    //myCam.mImgCroped.save("./data/drawings/img_"+millis()+".png");
   }
 
   /** 
@@ -154,42 +166,15 @@ public class ptx_inter {
 
     myCam.updateImg();
     myPtx.parseImage(myCam.mImgCroped, myCam.mImgFilter, myCam.mImgRez, wFrameFbo, hFrameFbo);
-    //atScan();
+//    atScan();
   }
-
-  /** 
-   * Helper functions that draws an area.
-   */
-  void drawArea(area _area) {
-
-    mFbo.colorMode(HSB, 360);
-
-    mFbo.fill(_area.hue, 360, 360);
-
-    mFbo.beginShape();
-
-    // 1) Exterior part of shape, clockwise winding
-    for (vec2i itPos : _area.listContour.get(0))
-      mFbo.vertex(itPos.x, itPos.y);
-
-    // 2) Interior part of shape, counter-clockwise winding
-    for (int i = 1; i < _area.listContour.size();++i) {
-      mFbo.beginContour();
-      for (vec2i itPos : _area.listContour.get(i))
-        mFbo.vertex(itPos.x, itPos.y);
-      mFbo.endContour();
-    }
-    mFbo.endShape(CLOSE);
-
-    mFbo.colorMode(RGB, 255); 
-  }
-
 
   /** 
    * Display the Frame Buffer Object where everything is drawn,
    * following the determined keystone. 
    */
   void displayFBO() {
+/*
     pushMatrix();
     translate(myPtx.transX_projo - mFbo.width/2, myPtx.transY_projo - mFbo.height/2, myPtx.transZ_projo);
     rotateX(myPtx.rotX_projo);
@@ -197,8 +182,10 @@ public class ptx_inter {
     rotateZ(myPtx.rotZ_projo);
     image(mFbo, 0, 0);   
     popMatrix();
+*/
+    surface.render(mFbo);
   }
-
+  
   /** 
    * Main rendering function, that dispatch to the other renderers.
    * Scan, Mire, Camera, Recogintion.
@@ -252,9 +239,10 @@ public class ptx_inter {
 
     mFbo.endDraw();
 
-    if (! (myPtxInter.myGlobState == globState.CAMERA && myPtxInter.myCamState == cameraState.CAMERA_WHOLE) )
-      myPtxInter.displayFBO();
-  
+    if (! (myPtxInter.myGlobState == globState.CAMERA && myPtxInter.myCamState == cameraState.CAMERA_WHOLE) ) {
+        displayFBO();
+    }
+
   }
 
   /** 
@@ -349,9 +337,8 @@ public class ptx_inter {
 
       // IN THE MEAN WHILE...
       image(myCam.mImg, 0, 0);
-      //       image(myCam.mImg, 0, 0);
       strokeWeight(2);
-      stroke(255, 0, 0);
+      stroke(255, 130);
       noFill();
       beginShape();
       vertex(myCam.ROI[0].x, myCam.ROI[0].y);
@@ -359,6 +346,16 @@ public class ptx_inter {
       vertex(myCam.ROI[2].x, myCam.ROI[2].y);
       vertex(myCam.ROI[3].x, myCam.ROI[3].y);
       endShape(CLOSE);
+      
+      
+      if(myCam.dotIndex != -1) {
+        stroke(255, 200);
+        ellipse(myCam.ROI[myCam.dotIndex].x, myCam.ROI[myCam.dotIndex].y, 20, 20);
+        ellipse(myCam.ROI[myCam.dotIndex].x, myCam.ROI[myCam.dotIndex].y, 40, 40);
+        stroke(255, 50);
+        line(myCam.ROI[myCam.dotIndex].x - 20, myCam.ROI[myCam.dotIndex].y, myCam.ROI[myCam.dotIndex].x + 20, myCam.ROI[myCam.dotIndex].y);
+        line(myCam.ROI[myCam.dotIndex].x, myCam.ROI[myCam.dotIndex].y - 20, myCam.ROI[myCam.dotIndex].x, myCam.ROI[myCam.dotIndex].y + 20);
+      }
 
       fill(255);
 
@@ -532,7 +529,6 @@ public class ptx_inter {
           mFbo.endContour();
         }
         mFbo.endShape(CLOSE);
-  
       }
 
       mFbo.colorMode(RGB, 255);
@@ -646,7 +642,6 @@ public class ptx_inter {
       mFbo.vertex(wFrameFbo-1, hFrameFbo-1);
 
       mFbo.endShape();
-   
     } else {
       mFbo.noStroke();
       mFbo.beginShape(TRIANGLE_FAN);
@@ -658,8 +653,6 @@ public class ptx_inter {
       mFbo.vertex(mFbo.width, mFbo.height);
       mFbo.endShape();
     }
-  
-  
   }
 
   /** 
@@ -699,15 +692,11 @@ public class ptx_inter {
    */
   void saveConfig() {
     println("Config Saved!");
+    
+    //Save key stone
+    ks.save("./data/configKeyStone.xml");
+    
     JSONObject json = new JSONObject();
-
-    json.setFloat("rotX_projo", myPtx.rotX_projo);
-    json.setFloat("rotY_projo", myPtx.rotY_projo);
-    json.setFloat("rotZ_projo", myPtx.rotZ_projo);
-    json.setFloat("ecart_projo", ecart_projo);
-    json.setFloat("transX_projo", myPtx.transX_projo);
-    json.setFloat("transY_projo", myPtx.transY_projo);
-    json.setFloat("transZ_projo", myPtx.transZ_projo);
 
     json.setFloat("seuilSaturation", myPtx.seuilSaturation);
     json.setFloat("seuilValue", myPtx.seuilValue);
@@ -765,15 +754,10 @@ public class ptx_inter {
    */
   void loadConfig() {
 
+    //load keystone
+    ks.load("./data/configKeyStone.xml");
+    
     JSONObject json = loadJSONObject("data/config.json");
-
-    myPtx.rotX_projo   = json.getFloat("rotX_projo");
-    myPtx.rotY_projo   = json.getFloat("rotY_projo");
-    myPtx.rotZ_projo   = json.getFloat("rotZ_projo");
-    ecart_projo  = json.getFloat("ecart_projo");
-    myPtx.transX_projo = json.getFloat("transX_projo");
-    myPtx.transY_projo = json.getFloat("transY_projo");
-    myPtx.transZ_projo = json.getFloat("transZ_projo");
 
     myPtx.seuilSaturation = json.getFloat("seuilSaturation");
     myPtx.seuilValue      = json.getFloat("seuilValue");
@@ -847,26 +831,39 @@ public class ptx_inter {
   }
 
 
-  /** 
-   * Ptx KeyPressed function that highjack most of the keys you could use.
-   * Only triggered when in recognision mode.
-   */
-  void keyPressed() {
-   
-    float rotVal = 0.01;
-    
-    // MANAGEMENT KEYS (FK_F** - 5), the -5 is here because of a weird behavior of P3D for keymanagement
+  void managementKeyPressed() {
+     // MANAGEMENT KEYS (FK_F** - 5), the -5 is here because of a weird behavior of P3D for keymanagement
     switch(keyCode) {
+    case (KeyEvent.VK_F1-15):
+      isInConfig = false;
+      myPtx.verboseImg = false;
+      ks.stopCalibration();
+      myCam.dotIndex = -1;
+      noCursor();
+      break;
     case (KeyEvent.VK_F2-15):
-      myGlobState = globState.MIRE; 
+      ks.toggleCalibration();
+      isInConfig = true;
+      myPtx.verboseImg = true;
+      myCam.dotIndex = -1;
+      if(ks.isCalibrating())
+        cursor();
+      else
+        noCursor();
+      myGlobState = globState.MIRE;
       break;
     case (KeyEvent.VK_F3-15):
+      ks.stopCalibration();
+      isInConfig = true;
+      myPtx.verboseImg = true;
+      cursor();
       if (myGlobState == globState.CAMERA) {
         switch (myCamState) {
         case CAMERA_WHOLE:  
+          noCursor();
           myCamState = cameraState.CAMERA_ZOOM;  
           break;
-        case CAMERA_ZOOM:  
+        case CAMERA_ZOOM:
           myCamState = cameraState.CAMERA_WHOLE;  
           break;
         }
@@ -874,6 +871,11 @@ public class ptx_inter {
       myGlobState = globState.CAMERA;
       break;
     case (KeyEvent.VK_F4-15):
+      noCursor();
+      myCam.dotIndex = -1;
+      ks.stopCalibration();
+      isInConfig = true;
+      myPtx.verboseImg = true;
       if ( myGlobState == globState.RECOG) {
         switch(  myRecogState ) {
         case RECOG_GRAY:     myRecogState = recogState.RECOG_ROI;       break;
@@ -887,7 +889,18 @@ public class ptx_inter {
       }
       myGlobState = globState.RECOG;
       break;
-      
+    
+    case (KeyEvent.VK_F6-15):
+      myCam.mImgCroped = loadImage("./data/testDrawing.png");  
+      myCam.mImgFilter.copy(myPtxInter.myCam.mImgCroped, 0, 0, myPtxInter.myCam.wFbo, myPtxInter.myCam.hFbo, 0, 0, myPtxInter.myCam.wFbo, myPtxInter.myCam.hFbo);
+      myCam.mImgRez.copy(myPtxInter.myCam.mImgCroped, 0, 0, myPtxInter.myCam.wFbo, myPtxInter.myCam.hFbo, 0, 0, myPtxInter.myCam.wFbo, myPtxInter.myCam.hFbo);
+      myCam.mImgCroped = createImage(myPtxInter.myCam.wFbo, myPtxInter.myCam.hFbo, RGB);
+      myCam.mImgCroped.copy(myPtxInter.myCam.mImgFilter, 0, 0, myPtxInter.myCam.wFbo, myPtxInter.myCam.hFbo, 0, 0, myPtxInter.myCam.wFbo, myPtxInter.myCam.hFbo);
+  
+      scanClr();
+      atScan();
+      break;
+
     case (KeyEvent.VK_F7-15):
       debugType = (debugType + 1) % 4; 
       break;
@@ -908,18 +921,25 @@ public class ptx_inter {
       }
       break;
     }
+  }
+
+  /** 
+   * Ptx KeyPressed function that highjack most of the keys you could use.
+   * Only triggered when in recognision mode.
+   */
+  void keyPressed() {
+
+    float rotVal = 0.01;
 
     switch(key) {
-    //Save/Load Config
-
     //Save/Load Config
     case 'w': saveConfig(); strUI = "Config Saved!"; togUI.reset(true); break;
     case 'x': loadConfig(); strUI = "Config Loaded!"; togUI.reset(true); break;
 
     case 'A': myPtx.seuilValue  = Math.max(  0.f, myPtx.seuilValue - 1);  break;
     case 'a': myPtx.seuilValue  = Math.min(255.f, myPtx.seuilValue + 1);  break;      
-    case 'Z': myPtx.seuilSaturation  = Math.max( 0.f, myPtx.seuilSaturation - 0.01);  break;
-    case 'z': myPtx.seuilSaturation  = Math.min( 1.f, myPtx.seuilSaturation + 0.01);  break;
+    case 'Z': myPtx.seuilSaturation  = Math.max( 0.f, myPtx.seuilSaturation - 0.01); break;
+    case 'z': myPtx.seuilSaturation  = Math.min( 1.f, myPtx.seuilSaturation + 0.01); break;
     case 'E': grayLevelUp  = Math.max(  0, grayLevelUp -3);    break;
     case 'e': grayLevelUp  = Math.min(255, grayLevelUp +3);    break;
     case 'R': grayLevelDown = Math.max(  0, grayLevelDown -3); break;
@@ -952,64 +972,38 @@ public class ptx_inter {
     case 'Q': myPtx.indexHue = (myPtx.indexHue + 7)%8; break;
     case 'q': myPtx.indexHue = (myPtx.indexHue + 1)%8; break;
 
-
-      // GESTION PROJO    
-    case 'm': myPtx.transX_projo+=1;        break;
-    case 'M': myPtx.rotX_projo+=rotVal;     break;
-    case 'k': myPtx.transX_projo-=01;       break;
-    case 'K': myPtx.rotX_projo-=rotVal;     break;
-    case 'l': myPtx.transY_projo+=1;        break;
-    case 'L': myPtx.rotY_projo+=rotVal;     break;
-    case 'o': myPtx.transY_projo-=1;        break;
-    case 'O': myPtx.rotY_projo-=rotVal;     break;
-    case 'p': myPtx.transZ_projo+=1;        break;
-    case 'P': myPtx.rotZ_projo+=rotVal;     break;
-    case 'i': myPtx.transZ_projo-=1;        break;
-    case 'I': myPtx.rotZ_projo-=rotVal;     break;
-    case 'u': ecart_projo-=0.002;
-        hFrameFbo = 757;
-        wFrameFbo = int(hFrameFbo *(width*1.0)/height * ecart_projo);
-        myCam.resize(wFrameFbo, hFrameFbo);
-        mFbo = createGraphics(wFrameFbo, hFrameFbo);
-        break;
-    case 'U': ecart_projo+=0.002;
-        hFrameFbo = 757;
-        wFrameFbo = int(hFrameFbo *(width*1.0)/height * ecart_projo);
-        myCam.resize(wFrameFbo, hFrameFbo);
-        mFbo = createGraphics(wFrameFbo, hFrameFbo);
-        break;
-
       // Gestion Cam
     case 'C': myCam.zoomCamera*=1.02;       break;
     case 'c': myCam.zoomCamera/=1.02;       break;
 
-    case 'V':  
-      myPtx.a0 += 0.003;  
-      scanCam();  
+    case 'o':
+      if( myCam.dotIndex != -1 ) {
+        myCam.ROI[myCam.dotIndex].y -= 1;
+        myPtx.calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
+        myPtxInter.scanCam();
+      }
       break;
-    case 'v':  
-      myPtx.a0 -= 0.003;  
-      scanCam();
+    case 'l':
+      if( myCam.dotIndex != -1 ) {
+        myCam.ROI[myCam.dotIndex].y += 1;
+        myPtx.calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
+        myPtxInter.scanCam();
+      }
       break;
-    case 'B':  
-      myPtx.a1 += 0.003;  
-      scanCam();  
+   case 'k':
+      if( myCam.dotIndex != -1 ) {
+        myCam.ROI[myCam.dotIndex].x -= 1;
+        myPtx.calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
+        myPtxInter.scanCam();
+      }
       break;
-    case 'b':  
-      myPtx.a1 -= 0.003;  
-      scanCam();  
-      break;
-    case 'N':  
-      myPtx.calcA0A1(myCam.ROI); 
-      scanCam();  
-      break;
-    case 'n':  
-      myPtx.calcA0A1(myCam.ROI); 
-      scanCam();  
+    case 'm':
+      if( myCam.dotIndex != -1 ) {
+        myCam.ROI[myCam.dotIndex].x += 1;
+        myPtx.calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
+        myPtxInter.scanCam();
+      }
       break;
     }
-    
   }
-
-
 }

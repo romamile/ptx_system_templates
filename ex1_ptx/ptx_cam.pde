@@ -34,7 +34,7 @@ import java.io.InputStreamReader;
 public class cam {
   Capture cpt;
   String camStr;
-  int camVideoId;
+  int camVideoId, camId;
  
   boolean hasImage, isFiltered, isRecognised;
   
@@ -44,6 +44,7 @@ public class cam {
   PImage mImgRez;
   
   int wFbo, hFbo;
+  int wCam, hCam;
 
   //Selection of ROI in mImg for mImgCroped
   //0 1
@@ -56,7 +57,11 @@ public class cam {
 
     wFbo = 1000;
     hFbo = 1000;
-
+    camVideoId = -1;
+    
+    wCam = 0;
+    hCam = 0;
+    
     ROI = new vec2f[4];
     mImg = createImage(wFbo, hFbo, RGB);// HAARRRR
 
@@ -86,8 +91,12 @@ public class cam {
   
   cam(int _w, int _h) {
     
+    wCam = 0;
+    hCam = 0;
+    
     wFbo = _w;
     hFbo = _h;
+    camVideoId = -1;
     
     ROI = new vec2f[4];
     mImg = createImage(wFbo, hFbo, RGB);// HAARRRR
@@ -148,10 +157,14 @@ public class cam {
    // 1) Select the camera 
    String[] cameras = Capture.list();
    println();
+   
+   if(cameras.length == 0)
+     return;
     
     if(_idCam < cameras.length) {
       println("FOUND GOOD CAM");
       camStr = cameras[_idCam];
+      camId = _idCam;
     } else {
       println("DEFAULT CAM");
       camStr = cameras[0];
@@ -162,7 +175,10 @@ public class cam {
     // Check camVideoId for control of hardware camera
     String[] camStrSplit = split(camStr,',');
     camVideoId = Character.getNumericValue( camStrSplit[0].charAt(camStrSplit[0].length()-1) ); 
-    
+
+    wCam = Integer.parseInt( split( split(camStrSplit[1],'=')[1], "x")[0] );
+    hCam = Integer.parseInt( split( split(camStrSplit[1],'=')[1], "x")[1] );   
+        
     // 2) Create the capture object
     cpt = new Capture(_myGrandParent, camStr);
     
@@ -176,11 +192,15 @@ public class cam {
   * @return          <code>true</code> if the camera is availabe. 
   */
   boolean update() {
+
+    if(camVideoId == -1)
+      return true;
+    
     long locStart  = System.currentTimeMillis();  
     if(cpt.available()) {
       cpt.read();
       
-      mImg = cpt;
+      mImg = cpt.copy();
       mImgCroped = createImage(wFbo, hFbo, RGB);
       System.out.println("Capture in: " + (System.currentTimeMillis()-locStart) );
       

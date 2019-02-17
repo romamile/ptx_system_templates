@@ -17,17 +17,16 @@ import java.util.Set;
 // ===== 1) ROOT LIBRARY =====
 boolean isScanning, isInConfig;
 ptx_inter myPtxInter;
-char scanKey = 'b';
-char configKey = 'n';
+char scanKey = 'a';
 // ===== =============== =====
 
 
 // TODO: HERITAGE CONSTRUCTEUR DANS AREACORE + typeArea : BUMP, WALL,  LAVA ...
 
 Box2DProcessing box2d;
-ArrayList<areaCore> myMap;
 ArrayList<Object> myObj1, myObj2;
 player player1, player2;
+ArrayList<areaCore> myMap = new ArrayList<areaCore>();
 
 
 void setup() {
@@ -40,7 +39,8 @@ void setup() {
   // ===== =============== =====
 
 
-  fullScreen(P3D);
+  //fullScreen(P3D);
+  size(1300, 900, P3D);
   noCursor();
 
   box2d = new Box2DProcessing(this);
@@ -49,8 +49,6 @@ void setup() {
   box2d.setGravity(0,0);
   box2d.listenForCollisions();
   
-  myMap = new ArrayList<areaCore>(); 
-  print("pojpoj");
   myObj1 = new ArrayList<Object>();
   myObj2 = new ArrayList<Object>();
 
@@ -113,8 +111,8 @@ void draw() {
   myPtxInter.mFbo.fill(255);
   myPtxInter.mFbo.stroke(255);
 
-  for (areaCore it : myMap)
-        myPtxInter.drawArea(it);
+  for(area refArea : myPtxInter.getListArea())
+    refArea.draw(1);
         
   player1.drawMe();
   player2.drawMe();
@@ -154,11 +152,8 @@ void keyPressed() {
     return;
   }
 
-  // Master key #1 / 2, that switch between your project and the configuration interface
-  if (key == configKey) {
-    isInConfig = !isInConfig;
-    return;
-  }
+
+  myPtxInter.managementKeyPressed();
 
   // Master key #2 / 2, that launch the scanning process
   if (key == scanKey && !isScanning) {
@@ -220,30 +215,44 @@ void mousePressed() {
 
   // ===== 6) MOUSE HANDLIND LIBRARY ===== 
 
-  if (isInConfig && myPtxInter.myGlobState == globState.CAMERA && mouseButton == LEFT) {
+  if (isInConfig && myPtxInter.myGlobState == globState.CAMERA  && myPtxInter.myCamState == cameraState.CAMERA_WHOLE && mouseButton == LEFT) {
 
-    if (myPtxInter.myCam.dotIndex == -1)
-      myPtxInter.myCam.dotIndex = 0; // Switching toward editing 
-    else
-      myPtxInter.myCam.ROI[myPtxInter.myCam.dotIndex++  ] =
-        new vec2f(mouseX * myPtxInter.myCam.mImg.width / width, 
-        mouseY * myPtxInter.myCam.mImg.height / height);
-
-    if ( myPtxInter.myCam.dotIndex == 4)
-      myPtxInter.myCam.dotIndex = -1;
+    // Select one "dot" of ROI if close enough
+    myPtxInter.myCam.dotIndex = -1;
+    for(int i = 0; i < 4; ++i) {
+      if( (myPtxInter.myCam.ROI[i].subTo( new vec2f(mouseX, mouseY) ).length()) < 50 ) {
+        myPtxInter.myCam.dotIndex = i;
+      }
+      
+    }
   }
+
   // ===== ========================= =====
 }
 
-void mouseMoved() {
+void mouseDragged() {
 
   // ===== 7) MOUSE HANDLIND LIBRARY ===== 
+  
+    if (isInConfig && myPtxInter.myGlobState == globState.CAMERA) {
+       if (myPtxInter.myCam.dotIndex != -1) {
+         myPtxInter.myCam.ROI[myPtxInter.myCam.dotIndex].addMe( new vec2f(mouseX-pmouseX, mouseY - pmouseY) ); 
+       }
+    }
 
-  if (isInConfig && myPtxInter.myGlobState == globState.CAMERA && myPtxInter.myCam.dotIndex != -1)
-    myPtxInter.myCam.ROI[myPtxInter.myCam.dotIndex] =
-      new vec2f(mouseX * myPtxInter.myCam.mImg.width  / width, 
-      mouseY * myPtxInter.myCam.mImg.height / height);
   // ===== ========================= =====
+}
+
+void mouseReleased() {
+  
+  if (isInConfig && myPtxInter.myGlobState == globState.CAMERA  && myPtxInter.myCamState == cameraState.CAMERA_WHOLE)
+       if (myPtxInter.myCam.dotIndex != -1) {
+         myPtxInter.myPtx.calculateHomographyMatrice(myPtxInter.wFrameFbo, myPtxInter.hFrameFbo, myPtxInter.myCam.ROI);
+         myPtxInter.scanCam();
+       }
+
+  
+  
 }
 
 // Collision event functions!

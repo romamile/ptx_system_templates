@@ -59,13 +59,14 @@ public class ptx_inter {
   // Scan
   int grayLevelUp, grayLevelDown;
   int whiteCtp;
-  int idCam;
+  int idCam; // should be in myCam
+  int marginFlash;
+  boolean withFlash;
 
 
   // Frame Buffer Object
   int wFrameFbo, hFrameFbo;
   PGraphics mFbo;
-  
   
   Keystone ks;
   CornerPinSurface surface;
@@ -96,6 +97,8 @@ public class ptx_inter {
 
     grayLevelUp   = 126;
     grayLevelDown = 126;
+    marginFlash = 5;
+    withFlash = false;
 
     // SCAN
     whiteCtp = 0;
@@ -183,6 +186,9 @@ public class ptx_inter {
     image(mFbo, 0, 0);   
     popMatrix();
 */
+    if(withFlash && isScanning && myGlobState != globState.CAMERA)
+      translate(0,0,marginFlash);
+    
     surface.render(mFbo);
   }
   
@@ -239,7 +245,7 @@ public class ptx_inter {
 
     mFbo.endDraw();
 
-    if (! (myPtxInter.myGlobState == globState.CAMERA && myPtxInter.myCamState == cameraState.CAMERA_WHOLE) ) {
+    if (! (myPtxInter.myGlobState == globState.CAMERA && myPtxInter.myCamState == cameraState.CAMERA_WHOLE) || isScanning ) {
         displayFBO();
     }
 
@@ -302,40 +308,7 @@ public class ptx_inter {
 
     switch (myCamState) {
     case CAMERA_WHOLE: // Show the whole view of the camera
-      /*
-      mFbo.pushMatrix();
-       
-       //      mFbo.translate(wFrameFbo / 2 - ratio * myCam.mImg.width  / 2,
-       //                     hFrameFbo / 2 - ratio * myCam.mImg.height / 2);
-       
-       mFbo.translate(0, hFrameFbo / 2 - ratio * myCam.mImg.height / 2);
-       
-       mFbo.scale(ratio, ratio);
-       
-       //    mFbo.fill(200); 
-       //    mFbo.stroke(255, 0, 0);
-       //    mFbo.rect(0, 0, myCam.mImg.width-10, myCam.mImg.height);
-       mFbo.image(myCam.mImg, 0,0);
-       
-       
-       mFbo.strokeWeight(2);
-       mFbo.stroke(255,0,0);
-       mFbo.noFill();
-       mFbo.beginShape();
-       mFbo.vertex(myCam.ROI[0].x, myCam.ROI[0].y);
-       mFbo.vertex(myCam.ROI[1].x, myCam.ROI[1].y);
-       mFbo.vertex(myCam.ROI[2].x, myCam.ROI[2].y);
-       mFbo.vertex(myCam.ROI[3].x, myCam.ROI[3].y);
-       mFbo.endShape(CLOSE);
-       
-       mFbo.popMatrix();
-       
-       mFbo.fill(255);
-       if (debugType != 0) mFbo.text("F3 - 1/2; ZOOM", 10, 30);
-       */
 
-
-      // IN THE MEAN WHILE...
       image(myCam.mImg, 0, 0);
       strokeWeight(2);
       stroke(255, 130);
@@ -613,7 +586,7 @@ public class ptx_inter {
 
     whiteCtp++;
 
-    if (myGlobState == globState.CAMERA) {
+    if (isInConfig && myGlobState == globState.CAMERA) {
 
       mFbo.background(0.3f, 0.3f, 0.3f);
 
@@ -662,15 +635,9 @@ public class ptx_inter {
   void displayDebugIntel() {
 
     //Values
-    String debugStr = "Gray Top: "  + grayLevelUp + "\n"
-      + "GrayDown: "  + grayLevelDown + "\n"
-      + "Ratio: "     + int(100*myPtx.ratioCam)/100.0 + "\n"
+    String debugStr = "Gray Top / Down: "  + grayLevelUp + " / " + grayLevelDown + "\n"
       + "Luminance: " + myPtx.seuilValue + "\n"
       + "Saturation: " + int(100*myPtx.seuilSaturation)/100.0 + "\n"
-//      + "Flash: T " + myPtx.flashUp
-//      + " - R " + myPtx.flashRight 
-//      + " - B " + myPtx.flashDown
-//      + " - L " + myPtx.flashLeft
       + "CamExp: " + myCam.getExposure() + "\n"
       + "CamSat: " + myCam.getSaturation()  + "\n";
 
@@ -702,11 +669,8 @@ public class ptx_inter {
     json.setFloat("seuilValue", myPtx.seuilValue);
     json.setInt("grayLevelUp", grayLevelUp);
     json.setInt("grayLevelDown", grayLevelDown);
-
-    json.setFloat("a0", myPtx.a0);
-    json.setFloat("a1", myPtx.a1);
-
-    json.setFloat("ratioCam", myPtx.ratioCam);
+    json.setInt("marginFlash", marginFlash);
+    json.setInt("with", withFlash ? 1 : 0);
 
     json.setInt("redMin", myPtx.listZone.get(0).getMin());
     json.setInt("redMax", myPtx.listZone.get(0).getMax());
@@ -722,10 +686,6 @@ public class ptx_inter {
     json.setFloat("flashUp", myPtx.flashUp);
     json.setFloat("flashDown", myPtx.flashDown);
 
-    /*
-    json.set("wCam", myCam.wCam);
-     json.set("hCam", myCam.hCam);
-     */
     json.setFloat("UpperLeftX", myCam.ROI[0].x);
     json.setFloat("UpperLeftY", myCam.ROI[0].y);
     json.setFloat("UpperRightX", myCam.ROI[1].x);
@@ -763,12 +723,8 @@ public class ptx_inter {
     myPtx.seuilValue      = json.getFloat("seuilValue");
     grayLevelUp   = json.getInt("grayLevelUp");
     grayLevelDown = json.getInt("grayLevelDown");
-
-    myPtx.a0 = json.getFloat("a0");
-    myPtx.a1 = json.getFloat("a1");
-
-    myPtx.ratioCam = json.getFloat("ratioCam");
-
+    marginFlash = json.getInt("marginFlash");
+    withFlash = json.getInt("withFlash") == 1;
 
     int redMin, redMax, greenMin, greenMax, blueMin, blueMax, yellowMin, yellowMax, backMin, backMax;
     redMin    = json.getInt("redMin");
@@ -799,11 +755,6 @@ public class ptx_inter {
     myPtx.flashUp    = json.getFloat("flashUp");
     myPtx.flashDown  = json.getFloat("flashDown");
 
-    /*
-    json.get("wCam", myCam.wCam);
-     json.get("hCam", myCam.hCam);
-     */
-
     myCam.ROI[0].x = json.getFloat("UpperLeftX");
     myCam.ROI[0].y = json.getFloat("UpperLeftY");
     myCam.ROI[1].x = json.getFloat("UpperRightX");
@@ -812,10 +763,6 @@ public class ptx_inter {
     myCam.ROI[2].y = json.getFloat("LowerRightY");
     myCam.ROI[3].x = json.getFloat("LowerLeftX");
     myCam.ROI[3].y = json.getFloat("LowerLeftY");
-
-
-    //  json.getFloat("volumeMusic");
-    //  json.getFloat("volumeSound");
 
     myPtx.tooSmallThreshold = json.getInt("tooSmallThreshold");
     myPtx.tooSmallContourThreshold = json.getInt("tooSmallContourThreshold");
@@ -891,7 +838,8 @@ public class ptx_inter {
       break;
     
     case (KeyEvent.VK_F6-15):
-      myCam.mImgCroped = loadImage("./data/testDrawing.png");  
+      myCam.mImgCroped = loadImage("./data/testDrawing.png");
+  
       myCam.mImgFilter.copy(myPtxInter.myCam.mImgCroped, 0, 0, myPtxInter.myCam.wFbo, myPtxInter.myCam.hFbo, 0, 0, myPtxInter.myCam.wFbo, myPtxInter.myCam.hFbo);
       myCam.mImgRez.copy(myPtxInter.myCam.mImgCroped, 0, 0, myPtxInter.myCam.wFbo, myPtxInter.myCam.hFbo, 0, 0, myPtxInter.myCam.wFbo, myPtxInter.myCam.hFbo);
       myCam.mImgCroped = createImage(myPtxInter.myCam.wFbo, myPtxInter.myCam.hFbo, RGB);
@@ -906,9 +854,9 @@ public class ptx_inter {
       break;
 
     case (KeyEvent.VK_F8-15):
-      myCam.update();    
-      myCam.updateImg(); 
-      break;
+      myCam.update();
+      scanCam();
+     break;
       
     case (KeyEvent.VK_F9-15):
       scanClr(); 

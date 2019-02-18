@@ -33,19 +33,19 @@ void draw() {
     background(0);
     myPtxInter.generalRender(); 
 
-    if (myPtxInter.whiteCtp > 20 && myPtxInter.whiteCtp < 22)
+    if (myPtxInter.withFlash || myPtxInter.whiteCtp > 15) {
       myPtxInter.myCam.update();
-
-    if (myPtxInter.whiteCtp > 35) {
-
       myPtxInter.scanCam();
-      if (myPtxInter.myGlobState != globState.CAMERA)
+      
+      if (myPtxInter.myGlobState != globState.CAMERA) {
         myPtxInter.scanClr();
+        atScan();
+      }
 
       myPtxInter.whiteCtp = 0;
       isScanning = false;
-      atScan();
     }
+
     return;
   }
 
@@ -62,7 +62,7 @@ void draw() {
 
 
   // Keep this part of the code to reset drawing
-  background(10);
+  background(0);
   myPtxInter.mFbo.beginDraw();
 
   // Draw here with "myPtxInter.mFbo" before call to classic drawing functions 
@@ -187,7 +187,5 @@ void mouseReleased() {
          myPtxInter.myPtx.calculateHomographyMatrice(myPtxInter.wFrameFbo, myPtxInter.hFrameFbo, myPtxInter.myCam.ROI);
          myPtxInter.scanCam();
        }
-
-  
-  
+       
 }

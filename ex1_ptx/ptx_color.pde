@@ -75,7 +75,7 @@ class ptx_color {
 
 		if( max == 0 ) {
 			// r = g = b = 0		// s = 0, h is undefined
-			return -1;
+			return 0;
 		}
 
 		if( r == max )			h = ( g - b ) / delta;		// between yellow & magenta

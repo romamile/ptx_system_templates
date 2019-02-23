@@ -16,6 +16,8 @@
  *
  */
 
+
+
 import java.lang.System.*;
 import java.awt.event.KeyEvent;
 
@@ -92,7 +94,6 @@ public class ptx_inter {
     wFrameFbo = int(hFrameFbo * ratioFbo);
 
     myPtx = new ptx();
-    //myPtx = new ptx(); myPtx.opencv = new OpenCV(_myParent, loadImage("./cards.png"));
     myCam = new cam();
 
     grayLevelUp   = 126;
@@ -115,7 +116,6 @@ public class ptx_inter {
     myCam.resize(wFrameFbo, hFrameFbo);
     
     myCam.startFromId(idCam, _myParent);
-    myPtx.opencv = new OpenCV(_myParent, createImage(myCam.wCam, myCam.hCam, ARGB));
     myPtx.calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
 
     // First scan (check if not over kill, already one update in file)

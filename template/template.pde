@@ -184,7 +184,7 @@ void mouseReleased() {
   
   if (isInConfig && myPtxInter.myGlobState == globState.CAMERA  && myPtxInter.myCamState == cameraState.CAMERA_WHOLE)
        if (myPtxInter.myCam.dotIndex != -1) {
-         myPtxInter.myPtx.calculateHomographyMatrice(myPtxInter.wFrameFbo, myPtxInter.hFrameFbo, myPtxInter.myCam.ROI);
+         myPtxInter.calculateHomographyMatrice(myPtxInter.wFrameFbo, myPtxInter.hFrameFbo, myPtxInter.myCam.ROI);
          myPtxInter.scanCam();
        }
        

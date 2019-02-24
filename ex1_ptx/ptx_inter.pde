@@ -16,14 +16,16 @@
  *
  */
 
+
+
 import java.lang.System.*;
 import java.awt.event.KeyEvent;
 
 import deadpixel.keystone.*;
 
 public enum globState { MIRE, CAMERA, RECOG };
-public enum recogState { RECOG_GRAY, RECOG_ROI, RECOG_BACK, RECOG_COL, RECOG_AREA, RECOG_CONTOUR, RECOG_ORIENTED };
-public enum cameraState { CAMERA_WHOLE, CAMERA_ZOOM }; 
+public enum recogState { RECOG_FLASH, RECOG_ROI, RECOG_BACK, RECOG_COL, RECOG_AREA, RECOG_CONTOUR };
+public enum cameraState { CAMERA_WHOLE, CAMERA_ROI }; 
 
 /**
  * This class is the main one in the PTX library. It helps you
@@ -46,7 +48,7 @@ public class ptx_inter {
   cameraState myCamState;
 
   // debug
-  PFont fDef;
+  PFont fDef, fGlob;
   int debugType; // 0 - 1 - 2 - 3
   
   toggle togUI;
@@ -68,9 +70,10 @@ public class ptx_inter {
   int wFrameFbo, hFrameFbo;
   PGraphics mFbo;
   
+  // Optical deformations. Projo & Cam
   Keystone ks;
   CornerPinSurface surface;
-  
+  ProjectiveTransform _keystoneMatrix;
   vec2f[] ROIproj;
   int dotIndex;
 
@@ -78,10 +81,11 @@ public class ptx_inter {
   ptx_inter(PApplet _myParent) {
 
     myGlobState = globState.MIRE;
-    myRecogState = recogState.RECOG_GRAY;
+    myRecogState = recogState.RECOG_FLASH;
     myCamState =  cameraState.CAMERA_WHOLE;
 
-    fDef = createFont(PFont.list()[0], 32);
+    fDef = createFont("./data/MonospaceTypewriter.ttf", 28);
+    fGlob = createFont("./data/MonospaceTypewriter.ttf", 28);
     debugType = 1;
     togUI = new toggle();
     togUI.setSpanS(1);
@@ -92,7 +96,6 @@ public class ptx_inter {
     wFrameFbo = int(hFrameFbo * ratioFbo);
 
     myPtx = new ptx();
-    //myPtx = new ptx(); myPtx.opencv = new OpenCV(_myParent, loadImage("./cards.png"));
     myCam = new cam();
 
     grayLevelUp   = 126;
@@ -115,8 +118,7 @@ public class ptx_inter {
     myCam.resize(wFrameFbo, hFrameFbo);
     
     myCam.startFromId(idCam, _myParent);
-    myPtx.opencv = new OpenCV(_myParent, createImage(myCam.wCam, myCam.hCam, ARGB));
-    myPtx.calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
+    calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
 
     // First scan (check if not over kill, already one update in file)
     //    myCam.update(); myCam.update(); myCam.update(); myCam.update(); myCam.update();
@@ -150,7 +152,7 @@ public class ptx_inter {
 
     myCam.mImgCroped = createImage(wFrameFbo, hFrameFbo, RGB);
 
-    myPtx.trapeze(myCam.mImg, myCam.mImgCroped, 
+    trapeze(myCam.mImg, myCam.mImgCroped, 
       myCam.mImg.width, myCam.mImg.height, 
       myCam.mImgCroped.width, myCam.mImgCroped.height, myCam.ROI);
 
@@ -168,7 +170,7 @@ public class ptx_inter {
   void scanClr() {
 
     myCam.updateImg();
-    myPtx.parseImage(myCam.mImgCroped, myCam.mImgFilter, myCam.mImgRez, wFrameFbo, hFrameFbo);
+    myPtx.parseImage(myCam.mImgCroped, myCam.mImgFilter, myCam.mImgRez, wFrameFbo, hFrameFbo, 99);
 //    atScan();
   }
 
@@ -177,15 +179,7 @@ public class ptx_inter {
    * following the determined keystone. 
    */
   void displayFBO() {
-/*
-    pushMatrix();
-    translate(myPtx.transX_projo - mFbo.width/2, myPtx.transY_projo - mFbo.height/2, myPtx.transZ_projo);
-    rotateX(myPtx.rotX_projo);
-    rotateY(myPtx.rotY_projo);
-    rotateZ(myPtx.rotZ_projo);
-    image(mFbo, 0, 0);   
-    popMatrix();
-*/
+
     if(withFlash && isScanning && myGlobState != globState.CAMERA)
       translate(0,0,marginFlash);
     
@@ -199,8 +193,8 @@ public class ptx_inter {
   void generalRender() {
 
     mFbo.beginDraw();
-    mFbo.textFont(fDef);
-    mFbo.textSize(32);
+    mFbo.textFont(fDef); textFont(fGlob);
+    mFbo.textSize(28);   textSize(28);
     mFbo.fill(255);
     mFbo.textAlign(LEFT);
 
@@ -215,17 +209,16 @@ public class ptx_inter {
       switch (myGlobState) {
       case MIRE:
         renderMire();
-        if (debugType != 0) mFbo.text("F2; MIRE", 10, 100); 
         break;
       case CAMERA:
         renderCamera(); 
-        if (debugType != 0) {
-          text("F3; CAMERA", 10, 100);
-        }
+        if (debugType != 0 && myPtxInter.myGlobState == globState.CAMERA && myPtxInter.myCamState == cameraState.CAMERA_WHOLE) { // display UI directly on screen   
+            textAlign(LEFT);
+            text("F3: CAMERA 1/2 - WHOLE", 20, 40);
+          }
         break;
       case RECOG:
         renderRecog();
-        if (debugType != 0) mFbo.text("F4; RECOG", 10, 100); 
         break;
       }
     }
@@ -236,9 +229,15 @@ public class ptx_inter {
       
     if(togUI.getState()) {
         // UI high level
-        mFbo.fill(255, 255, 255);     
-        mFbo.textAlign(CENTER);
-        mFbo.text(strUI, myPtxInter.mFbo.width/2, myPtxInter.mFbo.height/2 - 100);
+        if(myPtxInter.myGlobState == globState.CAMERA && myPtxInter.myCamState == cameraState.CAMERA_WHOLE) { // display UI directly on screen   
+          fill(255, 255, 255);     
+          textAlign(CENTER);
+          text(strUI, width/2, height/2 - 100); 
+        } else { // display UI in FBO
+          mFbo.fill(255, 255, 255);     
+          mFbo.textAlign(CENTER);
+          mFbo.text(strUI, myPtxInter.mFbo.width/2, myPtxInter.mFbo.height/2 - 100);
+        }
     } else {
         togUI.stop(false); 
     }
@@ -294,6 +293,14 @@ public class ptx_inter {
     mFbo.endShape();
 
     mFbo.stroke(255);
+    
+    if (debugType != 0) {
+      if(ks.isCalibrating())
+        mFbo.text("F2: MIRE 1/2 - CALIBRATING", 20, 40); 
+      else
+        mFbo.text("F2: MIRE 2/2 - DISPLAY", 20, 40); 
+    }
+
   }
 
 
@@ -329,14 +336,26 @@ public class ptx_inter {
         line(myCam.ROI[myCam.dotIndex].x - 20, myCam.ROI[myCam.dotIndex].y, myCam.ROI[myCam.dotIndex].x + 20, myCam.ROI[myCam.dotIndex].y);
         line(myCam.ROI[myCam.dotIndex].x, myCam.ROI[myCam.dotIndex].y - 20, myCam.ROI[myCam.dotIndex].x, myCam.ROI[myCam.dotIndex].y + 20);
       }
+      
+      
+      if (debugType != 0) {
+        pushStyle();
+          fill(255,130);
+          textSize(18);
+          textAlign(CENTER);
+          if(myCam.ROI[0].x < myCam.ROI[2].x) // comparison with oposite point, to check if on the left side of the picture, for offset value
+            text( "TopLeft", myCam.ROI[0].x - 50, myCam.ROI[0].y);
+          else
+            text( "TopLeft", myCam.ROI[0].x + 50, myCam.ROI[0].y);
+        popStyle();
+      }
+
 
       fill(255);
 
-      if (debugType != 0) mFbo.text("F3 - 1/2; ZOOM", 10, 30);
-
       break;
 
-    case CAMERA_ZOOM:  // Show the region of interest
+    case CAMERA_ROI:  // Show the region of interest
 
       mFbo.image(myCam.mImgCroped, 0, 0);
 
@@ -368,9 +387,9 @@ public class ptx_inter {
 
 
       mFbo.fill(255);
-      if (debugType != 0) mFbo.text("F3 - 1/2; ROI", 10, 30);
-
-
+      
+      if (debugType != 0)
+        mFbo.text("F3: CAMERA 1/2 - ROI", 20, 40);
 
       break;
     }
@@ -385,7 +404,7 @@ public class ptx_inter {
     background(0);
 
     switch (myRecogState) {
-    case RECOG_GRAY:
+    case RECOG_FLASH:
 
       mFbo.noStroke();
       mFbo.beginShape(TRIANGLE_FAN);
@@ -398,19 +417,19 @@ public class ptx_inter {
       mFbo.endShape();
         
       mFbo.fill(255);      
-      if (debugType != 0) mFbo.text("F4 - 1/7; GRAY", 10, 30);
+      if (debugType != 0) mFbo.text("F4: RECOG 1/6 - FLASH", 20, 40);
       break;
 
     case RECOG_ROI:
       mFbo.image(myCam.mImgCroped, 0, 0);
       mFbo.fill(255);
-      if (debugType != 0) mFbo.text("F4 - 2/7; ROI", 10, 30);
+      if (debugType != 0) mFbo.text("F4: RECOG 2/6 - ROI", 20, 40);
       break;
 
     case RECOG_BACK:
       mFbo.image(myCam.mImgFilter, 0, 0);
       mFbo.fill(255);
-      if (debugType != 0) mFbo.text("F4 - 3/7; BACK", 10, 30);
+      if (debugType != 0) mFbo.text("F4: RECOG 3/6 - SIGNAL vs NOISE", 20, 40);
       break;
 
     case RECOG_COL:
@@ -424,7 +443,7 @@ public class ptx_inter {
       mFbo.translate(wFrameFbo/2, hFrameFbo/2);
       mFbo.beginShape(QUADS);
       for (int i = 0; i < 360; i++) {
-        mFbo.fill(i, 360, 360);
+        mFbo.fill(i, 360, 360, 150);
         mFbo.vertex(100 * cos(2 * PI*float(i)     / 360), 100 * sin(2 * PI*float(i)     / 360));
         mFbo.vertex(100 * cos(2 * PI*float(i + 1) / 360), 100 * sin(2 * PI*float(i + 1) / 360));
         mFbo.vertex(120 * cos(2 * PI*float(i + 1) / 360), 120 * sin(2 * PI*float(i + 1) / 360));
@@ -435,7 +454,7 @@ public class ptx_inter {
       //Histogram
       mFbo.beginShape(QUADS);
       for (int i = 0; i < 360; i++) {
-        mFbo.fill(i, 360, 360);
+        mFbo.fill(i, 360, 360, 150);
         int val = 140 + myPtx.histHue[i];
 
         mFbo.vertex(140 * cos(2 * PI*float(i)     / 360), 140 * sin(2 * PI*float(i)     / 360));
@@ -477,7 +496,7 @@ public class ptx_inter {
       mFbo.colorMode(RGB, 255);
 
       mFbo.fill(255);
-      if (debugType != 0) mFbo.text("F4 - 4/7; COL", 10, 30);
+      if (debugType != 0) mFbo.text("F4: RECOG 4/6 - COLOR HISTOGRAM", 20, 40);
       break;
 
     case RECOG_AREA:
@@ -506,7 +525,7 @@ public class ptx_inter {
 
       mFbo.colorMode(RGB, 255);
       mFbo.fill(255);
-      if (debugType != 0) mFbo.text("F4 - 5/7; AREA", 10, 30);
+      if (debugType != 0) mFbo.text("F4: RECOG 5/6 - AREAS", 20, 40);
       break;
 
     case RECOG_CONTOUR:
@@ -548,33 +567,9 @@ public class ptx_inter {
       }
 
       mFbo.fill(255);
-      if (debugType != 0) mFbo.text("F4 - 6/7; CONTOUR", 10, 30);
+      if (debugType != 0) mFbo.text("F4: RECOG 6/6 - CONTOURS", 20, 40);
       break;
 
-    case RECOG_ORIENTED:
-
-      mFbo.stroke(50, 0, 0);
-      mFbo.beginShape(POINTS);
-      for (area itArea : myPtx.listArea)
-        for (vec2i itPos : itArea.posXY)
-          mFbo.vertex(itPos.x, itPos.y);
-      mFbo.endShape();
-
-      int i = 0;
-      mFbo.beginShape(POINTS);
-      for (area itArea : myPtx.listArea)
-        for (ArrayList<vec2i> itContour : itArea.listContour) {
-          i++;
-          mFbo.stroke(i*50%250, (80+i*i*80)%250, (160+i*i*150)%250);
-          for (vec2i itPos : itContour)
-            mFbo.vertex(itPos.x, itPos.y);
-        }  
-      mFbo.endShape();
-
-      mFbo.fill(255);
-      mFbo.stroke(255);
-      if (debugType != 0) mFbo.text("F4 - 7/7; ORIENTED", 10, 30);
-      break;
     }
   }
 
@@ -635,25 +630,79 @@ public class ptx_inter {
   void displayDebugIntel() {
 
     //Values
-    String debugStr = "Gray Top / Down: "  + grayLevelUp + " / " + grayLevelDown + "\n"
+    String debugStr = "-----\n"
+      + "GrayTop & Down: "  + grayLevelUp + " / " + grayLevelDown + "\n"
       + "Luminance: " + myPtx.seuilValue + "\n"
       + "Saturation: " + int(100*myPtx.seuilSaturation)/100.0 + "\n"
       + "CamExp: " + myCam.getExposure() + "\n"
       + "CamSat: " + myCam.getSaturation()  + "\n";
 
+
     if (debugType == 2) {
       mFbo.textAlign(LEFT);
-      mFbo.text(debugStr, 50, 200);
+      mFbo.text(debugStr, 20, 80);
     } 
 
     if (debugType == 3) {
       mFbo.textAlign(RIGHT);
-      mFbo.text(debugStr, wFrameFbo - 50, 200);
+      mFbo.text(debugStr, wFrameFbo - 20, 80);
     } 
 
     mFbo.textAlign(LEFT);
   }
 
+  /** 
+   * Apply the geometric correction on the camera picture.
+   * @param _in     Origine Image
+   * @param _out    Destination Image
+   * @param  _wBef  width of the origine image 
+   * @param  _hBef  height of the origine image 
+   * @param  _wAft  width of the destination image 
+   * @param  _hAft  height of the destination image 
+   * @param  _ROI   the 4 points defining the region of interest
+   */
+  public void trapeze(PImage _in, PImage _out, int _wBef, int _hBef, int _wAft, int _hAft, vec2f[] _ROI) {
+
+    _in.loadPixels();
+    _out.loadPixels();
+        
+    if (null != _keystoneMatrix) {
+      
+      vec2f coords;
+      for (int i = 0; i < _wAft; ++i) {
+        for (int j = 0; j < _hAft; ++j) {
+          
+          coords = _keystoneMatrix.transform(new vec2f(i, j));
+  
+          int x = (int) Math.round(coords.x);
+          int y = (int) Math.round(coords.y);
+          
+          // check point is in trapezoid
+          if (0 <= x && x < _wBef && 0 <= y && y < _hBef) {
+            _out.pixels[j*_wAft + i] = _in.pixels[y*_wBef + x];
+          }
+        }
+      }
+    }
+
+    _in.updatePixels();
+    _out.updatePixels();
+  }
+
+  
+  public void calculateHomographyMatrice(int _wAft, int _hAft, vec2f[] _ROI) {    
+    
+    vec2f[] src = new vec2f[] {
+      new vec2f(_ROI[0].x, _ROI[0].y), new vec2f(_ROI[3].x, _ROI[3].y), new vec2f(_ROI[2].x, _ROI[2].y), new vec2f(_ROI[1].x, _ROI[1].y)
+    };
+    vec2f[] dst = new vec2f[] {
+      new vec2f(0., 0.), new vec2f(0., _hAft), new vec2f(_wAft, _hAft), new vec2f(_wAft, 0.)  
+    };
+        
+    // refresh keystone
+    _keystoneMatrix = new ProjectiveTransform(dst, src);
+  }
+  
   /** 
    * Save all parametrs in a predifined file (data/config.json)
    */
@@ -670,7 +719,7 @@ public class ptx_inter {
     json.setInt("grayLevelUp", grayLevelUp);
     json.setInt("grayLevelDown", grayLevelDown);
     json.setInt("marginFlash", marginFlash);
-    json.setInt("with", withFlash ? 1 : 0);
+    json.setInt("withFlash", withFlash ? 1 : 0);
 
     json.setInt("redMin", myPtx.listZone.get(0).getMin());
     json.setInt("redMax", myPtx.listZone.get(0).getMax());
@@ -680,11 +729,6 @@ public class ptx_inter {
     json.setInt("blueMax", myPtx.listZone.get(2).getMax());
     json.setInt("yellowMin", myPtx.listZone.get(3).getMin());
     json.setInt("yellowMax", myPtx.listZone.get(3).getMax());
-
-    json.setFloat("flashLeft", myPtx.flashLeft);
-    json.setFloat("flashRight", myPtx.flashRight);
-    json.setFloat("flashUp", myPtx.flashUp);
-    json.setFloat("flashDown", myPtx.flashDown);
 
     json.setFloat("UpperLeftX", myCam.ROI[0].x);
     json.setFloat("UpperLeftY", myCam.ROI[0].y);
@@ -749,12 +793,6 @@ public class ptx_inter {
     //    if(backMin != backMax)
     //      myPtx.hasBackHue = true;
 
-
-    myPtx.flashLeft  = json.getFloat("flashLeft");
-    myPtx.flashRight = json.getFloat("flashRight");
-    myPtx.flashUp    = json.getFloat("flashUp");
-    myPtx.flashDown  = json.getFloat("flashDown");
-
     myCam.ROI[0].x = json.getFloat("UpperLeftX");
     myCam.ROI[0].y = json.getFloat("UpperLeftY");
     myCam.ROI[1].x = json.getFloat("UpperRightX");
@@ -808,9 +846,9 @@ public class ptx_inter {
         switch (myCamState) {
         case CAMERA_WHOLE:  
           noCursor();
-          myCamState = cameraState.CAMERA_ZOOM;  
+          myCamState = cameraState.CAMERA_ROI;  
           break;
-        case CAMERA_ZOOM:
+        case CAMERA_ROI:
           myCamState = cameraState.CAMERA_WHOLE;  
           break;
         }
@@ -825,13 +863,12 @@ public class ptx_inter {
       myPtx.verboseImg = true;
       if ( myGlobState == globState.RECOG) {
         switch(  myRecogState ) {
-        case RECOG_GRAY:     myRecogState = recogState.RECOG_ROI;       break;
-        case RECOG_ROI:      myRecogState = recogState.RECOG_BACK;      break;
-        case RECOG_BACK:     myRecogState = recogState.RECOG_COL;       break;
-        case RECOG_COL:      myRecogState = recogState.RECOG_AREA;      break;
-        case RECOG_AREA:     myRecogState = recogState.RECOG_CONTOUR;   break;
-        case RECOG_CONTOUR:  myRecogState = recogState.RECOG_ORIENTED;  break;
-        case RECOG_ORIENTED: myRecogState = recogState.RECOG_GRAY;      break;
+        case RECOG_FLASH:     myRecogState = recogState.RECOG_ROI;     break;
+        case RECOG_ROI:      myRecogState = recogState.RECOG_BACK;     break;
+        case RECOG_BACK:     myRecogState = recogState.RECOG_COL;      break;
+        case RECOG_COL:      myRecogState = recogState.RECOG_AREA;     break;
+        case RECOG_AREA:     myRecogState = recogState.RECOG_CONTOUR;  break;
+        case RECOG_CONTOUR:  myRecogState = recogState.RECOG_FLASH;    break;
         }
       }
       myGlobState = globState.RECOG;
@@ -884,10 +921,20 @@ public class ptx_inter {
     case 'w': saveConfig(); strUI = "Config Saved!"; togUI.reset(true); break;
     case 'x': loadConfig(); strUI = "Config Loaded!"; togUI.reset(true); break;
 
-    case 'A': myPtx.seuilValue  = Math.max(  0.f, myPtx.seuilValue - 1);  break;
-    case 'a': myPtx.seuilValue  = Math.min(255.f, myPtx.seuilValue + 1);  break;      
-    case 'Z': myPtx.seuilSaturation  = Math.max( 0.f, myPtx.seuilSaturation - 0.01); break;
-    case 'z': myPtx.seuilSaturation  = Math.min( 1.f, myPtx.seuilSaturation + 0.01); break;
+    case 'A': case 'a':
+      if(key == 'a') myPtx.seuilValue  = Math.max(  0.f, myPtx.seuilValue + 1);
+      else           myPtx.seuilValue  = Math.max(  0.f, myPtx.seuilValue - 1);
+      myCam.updateImg();
+      myPtx.parseImage(myCam.mImgCroped, myCam.mImgFilter, myCam.mImgRez, wFrameFbo, hFrameFbo, 2);
+      break;
+
+    case 'Z': case 'z':
+      if(key == 'z') myPtx.seuilSaturation  = Math.max( 0.f, myPtx.seuilSaturation + 0.01);
+      else           myPtx.seuilSaturation  = Math.max( 0.f, myPtx.seuilSaturation - 0.01);
+      myCam.updateImg();
+      myPtx.parseImage(myCam.mImgCroped, myCam.mImgFilter, myCam.mImgRez, wFrameFbo, hFrameFbo, 2);
+      break;
+    
     case 'E': grayLevelUp  = Math.max(  0, grayLevelUp -3);    break;
     case 'e': grayLevelUp  = Math.min(255, grayLevelUp +3);    break;
     case 'R': grayLevelDown = Math.max(  0, grayLevelDown -3); break;
@@ -898,58 +945,36 @@ public class ptx_inter {
     case 'f': myCam.addExposure(10);    break;
     case 'F': myCam.addExposure(-10);   break;
 
-    case 'S':
+    case 'S': case 's':
       if (myPtx.indexHue%2 != 0)
         myPtx.listZone.get(myPtx.indexHue/2).b =
-          (myPtx.listZone.get(myPtx.indexHue/2).b + 1 )%360;
+          (myPtx.listZone.get(myPtx.indexHue/2).b + (key == 's' ? 359 : 1) )%360;
       else
         myPtx.listZone.get(myPtx.indexHue/2).a =
-          (myPtx.listZone.get(myPtx.indexHue/2).a + 1 )%360;
+          (myPtx.listZone.get(myPtx.indexHue/2).a + (key == 's' ? 359 : 1) )%360;
+          
+      myCam.updateImg();
+      myPtx.parseImage(myCam.mImgCroped, myCam.mImgFilter, myCam.mImgRez, wFrameFbo, hFrameFbo, 2);
       break;
 
-    case 's':
-      if (myPtx.indexHue%2 != 0)
-        myPtx.listZone.get(myPtx.indexHue/2).b =
-          (myPtx.listZone.get(myPtx.indexHue/2).b + 359 )%360;
-      else
-        myPtx.listZone.get(myPtx.indexHue/2).a =
-          (myPtx.listZone.get(myPtx.indexHue/2).a + 359 )%360;
+    case 'Q': case 'q':
+      myPtx.indexHue = (myPtx.indexHue + (key == 'q' ? 1 : 7))%8;
       break;
-
-
-    case 'Q': myPtx.indexHue = (myPtx.indexHue + 7)%8; break;
-    case 'q': myPtx.indexHue = (myPtx.indexHue + 1)%8; break;
 
       // Gestion Cam
     case 'C': myCam.zoomCamera*=1.02;       break;
     case 'c': myCam.zoomCamera/=1.02;       break;
 
-    case 'o':
+    case 'o': case 'l': case 'k': case 'm':
       if( myCam.dotIndex != -1 ) {
-        myCam.ROI[myCam.dotIndex].y -= 1;
-        myPtx.calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
-        myPtxInter.scanCam();
-      }
-      break;
-    case 'l':
-      if( myCam.dotIndex != -1 ) {
-        myCam.ROI[myCam.dotIndex].y += 1;
-        myPtx.calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
-        myPtxInter.scanCam();
-      }
-      break;
-   case 'k':
-      if( myCam.dotIndex != -1 ) {
-        myCam.ROI[myCam.dotIndex].x -= 1;
-        myPtx.calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
-        myPtxInter.scanCam();
-      }
-      break;
-    case 'm':
-      if( myCam.dotIndex != -1 ) {
-        myCam.ROI[myCam.dotIndex].x += 1;
-        myPtx.calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
-        myPtxInter.scanCam();
+        switch(key) {
+        case 'o' : myCam.ROI[myCam.dotIndex].y -= 1; break;
+        case 'l' : myCam.ROI[myCam.dotIndex].y += 1; break;
+        case 'k' : myCam.ROI[myCam.dotIndex].x -= 1; break;
+        case 'm' : myCam.ROI[myCam.dotIndex].x += 1; break;
+        }
+        calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
+        scanCam();
       }
       break;
     }

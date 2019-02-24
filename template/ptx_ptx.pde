@@ -53,9 +53,6 @@ public class ptx {
   int[] histHue;
   int[] hueRef;
   int indexHue;
-
-  // OPTICS CAMERA  
-  ProjectiveTransform _keystoneMatrix;
   
   // Local but not so local
   int[] ids;
@@ -66,9 +63,6 @@ public class ptx {
   int rMask;
 
   ArrayList<Integer> idLabels;
-
-  public float flashLeft, flashRight, flashUp, flashDown;
-
   public int tooSmallThreshold;
   public int tooSmallContourThreshold;
 
@@ -101,10 +95,6 @@ public class ptx {
 
     indexHue = 0;
 
-    flashLeft = 0;
-    flashRight = 0;
-    flashUp = 0;
-    flashDown = 0;
     //showPince = true;
 
     listZone.add(new hueInterval(350, 50));
@@ -125,58 +115,7 @@ public class ptx {
     seuil_tailleSurface = 400;
     seuil_smallArea = 200;
   }
-
-  /** 
-   * Apply the geometric correction on the camera picture.
-   * @param _in     Origine Image
-   * @param _out    Destination Image
-   * @param  _wBef  width of the origine image 
-   * @param  _hBef  height of the origine image 
-   * @param  _wAft  width of the destination image 
-   * @param  _hAft  height of the destination image 
-   * @param  _ROI   the 4 points defining the region of interest
-   */
-  public void trapeze(PImage _in, PImage _out, int _wBef, int _hBef, int _wAft, int _hAft, vec2f[] _ROI) {
-
-    _in.loadPixels();
-    _out.loadPixels();
-        
-    if (null != _keystoneMatrix) {
-      
-      vec2f coords;
-      for (int i = 0; i < _wAft; ++i) {
-        for (int j = 0; j < _hAft; ++j) {
-          
-          coords = _keystoneMatrix.transform(new vec2f(i, j));
-  
-          int x = (int) Math.round(coords.x);
-          int y = (int) Math.round(coords.y);
-          
-          // check point is in trapezoid
-          if (0 <= x && x < _wBef && 0 <= y && y < _hBef) {
-            _out.pixels[j*_wAft + i] = _in.pixels[y*_wBef + x]; //<>//
-          } //<>//
-        }
-      }
-    }
-
-    _in.updatePixels();
-    _out.updatePixels();
-  }
-
-  
-  public void calculateHomographyMatrice(int _wAft, int _hAft, vec2f[] _ROI) {    
-    
-    vec2f[] src = new vec2f[] {
-      new vec2f(_ROI[0].x, _ROI[0].y), new vec2f(_ROI[3].x, _ROI[3].y), new vec2f(_ROI[2].x, _ROI[2].y), new vec2f(_ROI[1].x, _ROI[1].y)
-    };
-    vec2f[] dst = new vec2f[] {
-      new vec2f(0., 0.), new vec2f(0., _hAft), new vec2f(_wAft, _hAft), new vec2f(_wAft, 0.)  
-    };
-        
-    // refresh keystone
-    _keystoneMatrix = new ProjectiveTransform(dst, src);
-  }
+ //<>// //<>//
   
   /** 
    * Main function that calls other sub function in order to
@@ -187,7 +126,7 @@ public class ptx {
    * @param   _w           width of the image
    * @param   _h           height of the image
    */
-  public boolean parseImage(PImage in, PImage outFilter, PImage outRez, int _w, int _h) {
+  public boolean parseImage(PImage in, PImage outFilter, PImage outRez, int _w, int _h, int stopAt) {
 
     System.out.println("----------------------------------");
     System.out.println("--- PARSE IMAGE ---");
@@ -196,88 +135,81 @@ public class ptx {
     long locStart  = System.currentTimeMillis();
 
     // 0) RESET & CLEAR
-    ww = _w;
-    hh = _h;
-    ids = new int[_w*_h];
-    idsArea = new int[_w*_h];
-
     reset(_w, _h);
     System.out.println("0) Reset, in: " + (System.currentTimeMillis()-locStart) );
     locStart = System.currentTimeMillis();
+    
+    if(stopAt == 0) return true;
 
     // 1) ISOLATE PIXELS OF INTEREST
-    if ( ! isolateForeground(in, outFilter, outRez, _w, _h))
+    if ( ! isolateForeground(in, outFilter, outRez))
       return false;
     System.out.println("1) Isolate foreground, in: " + (System.currentTimeMillis()-locStart) );
     locStart = System.currentTimeMillis();
+    
+    if(stopAt == 1) return true;
 
     // 2) SMOOTH
-    smooth(_w, _h, outFilter, outRez);
+    smooth(outFilter, outRez);
     System.out.println("2) Smooth, in: " + (System.currentTimeMillis()-locStart) );
     locStart = System.currentTimeMillis();
+     
+    if(stopAt == 2) return true;
 
     // 3) AGREGATE IN REGIONS
-    extractRegions(_w, _h);
+    extractRegions();
     System.out.println("3) Create Areas, in: " + (System.currentTimeMillis()-locStart) );
     locStart = System.currentTimeMillis();
-
-    // 4-1) ERASE SMALL AREAS
-    removeSmallAreas(_w, _h);
-    System.out.println("6) Remove small areas, in: " + (System.currentTimeMillis()-locStart) );
+    
+    // 3.1) ERASE SMALL AREAS
+    removeSmallAreas();
+    System.out.println("3.1) Remove small areas, in: " + (System.currentTimeMillis()-locStart) );
     locStart = System.currentTimeMillis();
+       
+    if(stopAt == 3) return true;
 
     // 4) CONTOUR
-    detectContour(_w, _h);
+    detectContour();
     System.out.println("4) Create & Organise Contour, in: " + (System.currentTimeMillis()-locStart) );
     locStart = System.currentTimeMillis();
-
-    /*  std::cout << "=== CONTOUR DEBUG ===" << std::endl;
-     for (auto it = listArea.begin(); it != listArea.end(); ++it) {  
-     std::cout << "--- contour --- dis: " << it->disContour.size() << std::endl;
-     for (auto itC = it->listContour.begin(); itC != it->listContour.end(); ++itC) 
-     std::cout << itC->size() << std::endl;
-     }*/
-
-    // 6) ERASE SMALL COUNTOUR
-    removeAeraWithSmallContour(_w, _h);
-    System.out.println("6) Remove areas sith small, in: " + (System.currentTimeMillis()-locStart) );
+    
+    // 4.1) ERASE SMALL COUNTOUR
+    removeAreaWithSmallContour();
+    System.out.println("4.1) Remove areas sith small, in: " + (System.currentTimeMillis()-locStart) );
     locStart = System.currentTimeMillis();
     System.out.println("Final nbr Area: " + listArea.size() );
-
-    /*
-    System.out.println("Filtered");
-     for (auto it = listArea.begin(); it != listArea.end(); ++it) {  
-     System.out.println("---");
-     for (auto itC = it->listContour.begin(); itC != it->listContour.end(); ++itC) 
-     System.out.println(itC->size());
-     }
-     */
-
-    // 7) DESCRIBE SHAPE
+    
+    // 4.2) DESCRIBE SHAPE
     describeShape();
-    System.out.println("7) Describe shape, in: " + (System.currentTimeMillis()-locStart) );
+    System.out.println("4.2) Describe shape, in: " + (System.currentTimeMillis()-locStart) );
     locStart = System.currentTimeMillis();
 
-    // A l'arrache, idArea ids (colId);
+    // 4.3) A l'arrache, idArea ids (colId); !!!REVOIR!!!
     for (area it : listArea)
       for (vec2i itPos : it.posXY) {
         idsArea[itPos.y * _w + itPos.x] = it.id;
         ids[itPos.y * _w + itPos.x] = it.colId;
       }
-    System.out.println("7.5) update ids & idAreas, in: " + (System.currentTimeMillis()-locStart) );
-    locStart = System.currentTimeMillis();
-
-    // 8) PROXIMITY SHAPES
-    proximityArea();
-    System.out.println("8) List proximity shape, in: " + (System.currentTimeMillis()-locStart) );
+    System.out.println("4.3) update ids & idAreas, in: " + (System.currentTimeMillis()-locStart) );
     locStart = System.currentTimeMillis();
     
-    // 9) Create PSHAPE SHAPES
+    if(stopAt == 4) return true;
+
+    // 5) PROXIMITY SHAPES
+    proximityArea();
+    System.out.println("5) List proximity shape, in: " + (System.currentTimeMillis()-locStart) );
+    locStart = System.currentTimeMillis();
+    
+    if(stopAt == 5) return true;
+    
+    // 6) Create PSHAPE SHAPES // revoir ou on mets ça
     for (area it : listArea)
       it.createPShape();
       
-    System.out.println("9) Create PShape, in: " + (System.currentTimeMillis()-locStart) );
+    System.out.println("6) Create PShape, in: " + (System.currentTimeMillis()-locStart) );
     locStart = System.currentTimeMillis();
+    
+    if(stopAt == 6) return true;
 
     System.out.println("------------------------" );
     System.out.println("---- TOTAL, in: " + (System.currentTimeMillis()-globStart) );
@@ -294,17 +226,18 @@ public class ptx {
    * @param  _h    height of the image
    */
   public void reset(int _w, int _h) {
+    
+    ww = _w;
+    hh = _h;
+    ids = new int[_w*_h];
+    idsArea = new int[_w*_h];
+    
     pixest.clear();
     listArea.clear();
 
-    for (int i = 0; i < _w*_h; ++i) {
-      ids[i] = -1;
-    }
-
-    for (int i = 0; i < 360; ++i) {
-      hueRef[i] = -1;
-      histHue[i] = 0;
-    }
+    Arrays.fill(ids, -1);
+    Arrays.fill(hueRef, -1);
+    Arrays.fill(histHue, 0);
 
     for (hueInterval myZone : listZone)
       for (int hue : myZone.getRange())
@@ -320,7 +253,7 @@ public class ptx {
    * @param  _h          height of the image
    */
   //  public boolean isolateForeground(uint8_t* in, uint8_t* outFilter, uint8_t* outRez, int _w, int _h) {
-  public boolean isolateForeground(PImage in, PImage outFilter, PImage outRez, int _w, int _h) {
+  public boolean isolateForeground(PImage in, PImage outFilter, PImage outRez) {
     int sizeDrawing = 0;
     int hue;
 
@@ -336,21 +269,18 @@ public class ptx {
     ptx_color cTN, cT;
     cTN = new ptx_color();
 
-    for (int i = 0; i < _w*_h; i++) {
+    for (int i = 0; i < ww*hh; i++) {
       cT = new ptx_color(red(in.pixels[i]), green(in.pixels[i]), blue(in.pixels[i])); // use the "++" on pointer.
 
       if (
-        // == Enough Color and not too bright
-   //     cT.getS() >= seuilSaturation && cT.getV() <= seuilValue
-        
-        // New test
-   
-        cT.r + cT.g + cT.b < 255*3 - seuilValue*3
+        // == Enough Color and not too White
+           cT.r + cT.g + cT.b < seuilValue*3
+        && cT.getS() >= seuilSaturation 
         
         // == Not on the surface of the pince
         //&& (!showPince || (i / _w > heightPince + marge || i%_w < _w/2 - widthPince/2 - marge || i%_w > _w/2 + widthPince/2 + marge ))
         // == Not touching the edge (because of potential issue wiwth the turtle algo for contour)
-        &&  i/ _w != 0 && i/ _w != _h-1 && i%_w != 0 && i%_w != _w-1 // FOR NOW
+        &&  i/ ww != 0 && i/ ww != hh-1 && i%ww != 0 && i%ww != ww-1 // FOR NOW
         // == Matching hue
         // && hueRef[ int(360 * cT.getH()) ] != -1
         // == Not the color of the "background"
@@ -374,7 +304,7 @@ public class ptx {
           sizeDrawing++;
           ids[i] = hueRef[hue];
 
-          pixest.add(new vec2i(i%_w, i / _w));
+          pixest.add(new vec2i(i%ww, i / ww));
 
           if(verboseImg) {
             cTN.fromHSV(ids[i], 1, 1);
@@ -394,8 +324,8 @@ public class ptx {
       }
     }
 
-    System.out.println("SIZE drawing: " + (sizeDrawing * 1.f / (_w*_h)) );
-    if (sizeDrawing  * 1.f / (_w*_h) > 0.75) {
+    System.out.println("SIZE drawing: " + (sizeDrawing * 1.f / (ww*hh)) );
+    if (sizeDrawing  * 1.f / (ww*hh) > 0.75) {
       System.out.println("TOO BIG DRAWING!");
       return false;
     }
@@ -418,7 +348,7 @@ public class ptx {
    * @param  _h          height of the image
    * @param  outFilter   Image to process
    */
-  public void smooth(int _w, int _h, PImage _outFilter, PImage _outRez) {
+  public void smooth(PImage _outFilter, PImage _outRez) {
 
     System.out.println("size: " + pixest.size());
     
@@ -439,21 +369,21 @@ public class ptx {
       j = s.y;
 
       dense = 0;
-      if (ids[(j + 1)*_w + (i - 1)] != -1) dense++;
-      if (ids[(j)*_w + (i - 1)] != -1) dense++;
-      if (ids[(j - 1)*_w + (i - 1)] != -1) dense++;
+      if (ids[(j + 1)*ww + (i - 1)] != -1) dense++;
+      if (ids[(j)*ww + (i - 1)] != -1) dense++;
+      if (ids[(j - 1)*ww + (i - 1)] != -1) dense++;
 
-      if (ids[(j + 1)*_w + (i)] != -1) dense++;
+      if (ids[(j + 1)*ww + (i)] != -1) dense++;
       //
-      if (ids[(j - 1)*_w + (i)] != -1) dense++;
+      if (ids[(j - 1)*ww + (i)] != -1) dense++;
 
-      if (ids[(j + 1)*_w + (i + 1)] != -1) dense++;
-      if (ids[(j)*_w + (i + 1)] != -1) dense++;
-      if (ids[(j - 1)*_w + (i + 1)] != -1) dense++;
+      if (ids[(j + 1)*ww + (i + 1)] != -1) dense++;
+      if (ids[(j)*ww + (i + 1)] != -1) dense++;
+      if (ids[(j - 1)*ww + (i + 1)] != -1) dense++;
 
       if (dense <= 3) {
         // BAD
-        ids[j*_w + i] = -1;
+        ids[j*ww + i] = -1;
     
         if(verboseImg) {
           _outFilter.pixels[i] = color(0);
@@ -495,11 +425,11 @@ public class ptx {
    * @param  _w          width of the image
    * @param  _h          height of the image
    */
-  public void extractRegions(int _w, int _h) {
+  public void extractRegions() {
 
     int[] data = ids.clone();
     //TODO chgeck    idLabels = std::vector<unsigned int>(_w*_h,0);
-    idLabels = new ArrayList<Integer>( Collections.nCopies(_w*_h, 0) );
+    idLabels = new ArrayList<Integer>( Collections.nCopies(ww*hh, 0) );
 
     int mark = 1; //0 is for background pixels
 
@@ -508,16 +438,16 @@ public class ptx {
     equivalences.add(0);//to label background
 
     ArrayList<Integer> neighborsIndex = new ArrayList<Integer>();
-    neighborsIndex.add(-1-_w);//north west neighbor
-    neighborsIndex.add(-_w);//north neighbor
-    neighborsIndex.add(-_w+1);//north-east neighbor
+    neighborsIndex.add(-1-ww);//north west neighbor
+    neighborsIndex.add(-ww);//north neighbor
+    neighborsIndex.add(-ww+1);//north-east neighbor
     neighborsIndex.add(-1);//west neighbor
 
     // Check what is a set, what is a map, and possible stuff in Java.
 
     //-----------
     // First Pass
-    for (int i=0; i<_w*_h; ++i) {
+    for (int i=0; i<ww*hh; ++i) {
       if (data[i]!=-1) {//is not background
 
         //get the neighboring elements of the current element
@@ -526,7 +456,7 @@ public class ptx {
         LinkedHashSet<Integer> neighborsLabels = new LinkedHashSet<Integer>();
         for (int j=0; j<neighborsIndex.size(); ++j) {  // Parse through all interesting neighbors
           int neighborsIdx=i+neighborsIndex.get(j);
-          if (neighborsIdx>=0 && neighborsIdx<_w*_h) {   // Neighbor is inside range
+          if (neighborsIdx>=0 && neighborsIdx<ww*hh) {   // Neighbor is inside range
             if (data[neighborsIdx]==data[i]) {         // Neighbor is not background
               neighborsLabels.add(idLabels.get(neighborsIdx));
             }
@@ -574,9 +504,9 @@ public class ptx {
       if (idLabels.get(i) != 0) // We're on foreground
         if (! labelToArea.containsKey(idLabels.get(i))) { // Not known label => add a new area
           labelToArea.put(idLabels.get(i), listArea.size());
-          listArea.add( new area(listArea.size(), new vec2i(i%_w, i / _w), ids[i]) );
+          listArea.add( new area(listArea.size(), new vec2i(i%ww, i / ww), ids[i]) );
         } else {
-          listArea.get( labelToArea.get(idLabels.get(i)) ).posXY.add( new vec2i(i%_w, i / _w) );
+          listArea.get( labelToArea.get(idLabels.get(i)) ).posXY.add( new vec2i(i%ww, i / ww) );
         }
     }
 
@@ -595,7 +525,7 @@ public class ptx {
    * @param  _w          width of the image
    * @param  _h          height of the image
    */
-  public void removeSmallAreas(int _w, int _h) {
+  public void removeSmallAreas() {
 
     Iterator<area> myArea = listArea.iterator();
     while (myArea.hasNext()) {
@@ -603,8 +533,8 @@ public class ptx {
 
       if (it.posXY.size() <= tooSmallThreshold) {
         for (vec2i itPos : it.posXY) {
-          ids[itPos.y * _w + itPos.x] = -1; // reset ids
-          idsArea[itPos.y * _w + itPos.x] = -1; // reset ids
+          ids[itPos.y * ww + itPos.x] = -1; // reset ids
+          idsArea[itPos.y * ww + itPos.x] = -1; // reset ids
         }
         myArea.remove();
       }
@@ -617,7 +547,7 @@ public class ptx {
    * @param  _w          width of the image
    * @param  _h          height of the image
    */
-  public void detectContour(int _w, int _h) {
+  public void detectContour() {
 
     // 0 === Compute Center by averaging
     for (area it : listArea) {
@@ -636,15 +566,15 @@ public class ptx {
       for (vec2i itPx : it.posXY) {
 
         // If pixel on the boundary of the image => CONTOUR
-        if (itPx.x == 0 || itPx.x == _w - 1 || itPx.y == 0 || itPx.y == _h - 1) {
+        if (itPx.x == 0 || itPx.x == ww - 1 || itPx.y == 0 || itPx.y == hh - 1) {
           disContour.add(itPx);
         } else {
 
           // If one of the neighbor of the pixel has different label => CONTOUR
-          int idPx = itPx.y*_w + itPx.x;
+          int idPx = itPx.y*ww + itPx.x;
           if ((idLabels.get(idPx)
             & idLabels.get(idPx - 1)  & idLabels.get(idPx + 1) //weast and east neighbors
-            & idLabels.get(idPx + _w) & idLabels.get(idPx - _w) //south and north neighbors
+            & idLabels.get(idPx + ww) & idLabels.get(idPx - ww) //south and north neighbors
             ) != idLabels.get(idPx)) {
             disContour.add(itPx);
           }
@@ -666,10 +596,10 @@ public class ptx {
 
         DIRECTION dir=DIRECTION.NORTH;
 
-        vec2i currPoint = updateIndex(firstPoint, dir, _w);
+        vec2i currPoint = updateIndex(firstPoint, dir, ww);
 
         while (currPoint.diffFrom(firstPoint)) { 
-          if (idLabels.get(currPoint.y*_w + currPoint.x) == idLabels.get(firstPoint.y*_w + firstPoint.x)) {
+          if (idLabels.get(currPoint.y*ww + currPoint.x) == idLabels.get(firstPoint.y*ww + firstPoint.x)) {
             // Pixel on the area's boundary, remove for non oriented & add to oriented.
             if (boundary.get(boundary.size() - 1).diffFrom(currPoint)) //store boundary point (if not just previously stored already) // TODO: CHECK IF ITS EVER TRIGGERED
               boundary.add(currPoint);
@@ -691,7 +621,7 @@ public class ptx {
             // Pixel NOT on the area's boundary
             dir=toTheRight(dir);
           }
-          currPoint = updateIndex(currPoint, dir, _w);
+          currPoint = updateIndex(currPoint, dir, ww);
         }
 
         it.listContour.add(boundary);
@@ -705,7 +635,7 @@ public class ptx {
    * @param  _w          width of the image
    * @param  _h          height of the image
    */
-  public void removeAeraWithSmallContour(int _w, int _h) {
+  public void removeAreaWithSmallContour() {
 
     for (area it : listArea) {
       Iterator<ArrayList<vec2i>> itContour = it.listContour.iterator();
@@ -725,8 +655,8 @@ public class ptx {
 
       if (it.listContour.isEmpty()) {
         for (vec2i itPos : it.posXY) {
-          ids[itPos.y * _w + itPos.x] = -1; // reset ids
-          idsArea[itPos.y * _w + itPos.x] = -1; // reset ids
+          ids[itPos.y * ww + itPos.x] = -1; // reset ids
+          idsArea[itPos.y * ww + itPos.x] = -1; // reset ids
         }
         myArea.remove();
       }

@@ -86,6 +86,8 @@ void draw() {
 // Use it to update what is meant to be done once you have "new areas"
 
 void atScan() {
+  
+  
 }
 
 

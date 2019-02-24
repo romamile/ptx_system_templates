@@ -65,6 +65,14 @@ class toggle {
   float getOscil() { 
     update(); 
     return ( cos( getTickVal() *2*3.141592) + 1 ) / 2;
+  }  
+  boolean getDirac() {
+    if(getState()) {
+      tog();
+      return true;
+    } else {
+      return false; 
+    }
   }
 
   void stop  (boolean _state) { 

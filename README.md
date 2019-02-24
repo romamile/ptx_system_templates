@@ -1,6 +1,7 @@
 # PTX System
 
 Beware: work in progress!
+Especially the javadoc is not completely up-to-date... (waiting for the next realease to update it)
 
 This library has been created in the context of [Papertronics](papertronics.org/en/) (Jérémie Cortial & Roman Miletitch). We wanted to have an easy way to interact with our drawing, we didn't find one, so we created it. And now we opened it up to the world so we're super curious to see what will be done with it!
 

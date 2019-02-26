@@ -24,24 +24,42 @@ void setup() {
 
 void draw() {
 
-  // ===== 3) SCANNING & CONFIG DRAW LIBRARY =====  
+    // ===== 3) SCANNING & CONFIG DRAW LIBRARY =====  
   if (isScanning) {
     background(0);
     myPtxInter.generalRender(); 
 
-    if (myPtxInter.whiteCtp > 20 && myPtxInter.whiteCtp < 22)
+    if(!myPtxInter.withFlash) {
       myPtxInter.myCam.update();
-
-    if (myPtxInter.whiteCtp > 35) {
-
       myPtxInter.scanCam();
-      if (myPtxInter.myGlobState != globState.CAMERA)
+      if (myPtxInter.myGlobState != globState.CAMERA) {
         myPtxInter.scanClr();
-
+        atScan();
+      }
       myPtxInter.whiteCtp = 0;
       isScanning = false;
-      atScan();
+    
+    } else { // WITH FLASH
+
+      if (myPtxInter.whiteCtp > 15 && myPtxInter.whiteCtp < 30)
+        myPtxInter.myCam.update();
+
+      if (myPtxInter.whiteCtp > 35) {
+        myPtxInter.myCam.update();
+        myPtxInter.scanCam();
+        
+        if (myPtxInter.myGlobState != globState.CAMERA) {
+          myPtxInter.scanClr();
+          atScan();
+        }
+
+        myPtxInter.whiteCtp = 0;
+        isScanning = false;
+      }
+
     }
+    
+
     return;
   }
 
@@ -50,7 +68,7 @@ void draw() {
     myPtxInter.generalRender();
     return;
   }
-  // ===== ================================= =====  
+  // ===== ================================= ===== 
 
 
 

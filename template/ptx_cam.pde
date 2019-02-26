@@ -186,8 +186,6 @@ public class cam {
     hCam = cpt.height;
     mImg = createImage(wCam, hCam, RGB);
 
-    println(cpt.width);
-
     switchToManual();
     update();
     update();
@@ -206,7 +204,7 @@ public class cam {
     if (cpt.available()) {
       cpt.read();
 
-      mImg = cpt;
+      mImg = cpt.copy();
 
       mImgCroped = createImage(wFbo, hFbo, RGB);
 

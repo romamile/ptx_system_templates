@@ -23,7 +23,7 @@ void setup() {
 
   x = myPtxInter.wFrameFbo/2;
   y = myPtxInter.hFrameFbo/2;
-  
+
 }
 
 void draw() {
@@ -33,18 +33,36 @@ void draw() {
     background(0);
     myPtxInter.generalRender(); 
 
-    if (myPtxInter.withFlash || myPtxInter.whiteCtp > 15) {
+    if(!myPtxInter.withFlash) {
       myPtxInter.myCam.update();
       myPtxInter.scanCam();
-      
       if (myPtxInter.myGlobState != globState.CAMERA) {
         myPtxInter.scanClr();
         atScan();
       }
-
       myPtxInter.whiteCtp = 0;
       isScanning = false;
+    
+    } else { // WITH FLASH
+
+      if (myPtxInter.whiteCtp > 15 && myPtxInter.whiteCtp < 30)
+        myPtxInter.myCam.update();
+
+      if (myPtxInter.whiteCtp > 35) {
+        myPtxInter.myCam.update();
+        myPtxInter.scanCam();
+        
+        if (myPtxInter.myGlobState != globState.CAMERA) {
+          myPtxInter.scanClr();
+          atScan();
+        }
+
+        myPtxInter.whiteCtp = 0;
+        isScanning = false;
+      }
+
     }
+    
 
     return;
   }
@@ -191,3 +209,4 @@ void mouseReleased() {
        }
        
 }
+

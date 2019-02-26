@@ -6,6 +6,7 @@
   "grayLevelDown": 126,
   "redMin": 16,
   "withFlash": 1,
+  "savePicture": 0,
   "yellowMin": 26,
   "marginFlash": 5,
   "redMax": 303,

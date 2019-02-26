@@ -64,6 +64,7 @@ public class ptx_inter {
   int idCam; // should be in myCam
   int marginFlash;
   boolean withFlash;
+  boolean savePicture;
 
 
   // Frame Buffer Object
@@ -102,6 +103,7 @@ public class ptx_inter {
     grayLevelDown = 126;
     marginFlash = 5;
     withFlash = false;
+    savePicture = false;
 
     // SCAN
     whiteCtp = 0;
@@ -159,7 +161,8 @@ public class ptx_inter {
     myCam.updateImg();
 
     // TEMP DEBUG
-    //myCam.mImgCroped.save("./data/drawings/img_"+millis()+".png");
+    if(savePicture)
+      myCam.mImgCroped.save("./data/drawings/img_"+month()+"-"+day()+"_"+hour()+"-"+minute()+"-"+second()+".png");
   }
 
   /** 
@@ -720,6 +723,7 @@ public class ptx_inter {
     json.setInt("grayLevelDown", grayLevelDown);
     json.setInt("marginFlash", marginFlash);
     json.setInt("withFlash", withFlash ? 1 : 0);
+    json.setInt("savePicture", savePicture ? 1 : 0);
 
     json.setInt("redMin", myPtx.listZone.get(0).getMin());
     json.setInt("redMax", myPtx.listZone.get(0).getMax());
@@ -769,6 +773,7 @@ public class ptx_inter {
     grayLevelDown = json.getInt("grayLevelDown");
     marginFlash = json.getInt("marginFlash");
     withFlash = json.getInt("withFlash") == 1;
+    savePicture = json.getInt("savePicture") == 1;
 
     int redMin, redMax, greenMin, greenMax, blueMin, blueMax, yellowMin, yellowMax, backMin, backMax;
     redMin    = json.getInt("redMin");

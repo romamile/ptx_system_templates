@@ -92,9 +92,12 @@ public class ptx_inter {
     togUI.setSpanS(1);
     strUI = "";
     
-    hFrameFbo = 757;
-    float ratioFbo = (width*1.0)/height; // = 37.f / 50;
-    wFrameFbo = int(hFrameFbo * ratioFbo);
+//    hFrameFbo = 757;
+//    float ratioFbo = (width*1.0)/height; // = 37.f / 50;
+//    wFrameFbo = int(hFrameFbo * ratioFbo);
+
+    wFrameFbo = 1280;
+    hFrameFbo = 720;
 
     myPtx = new ptx();
     myCam = new cam();
@@ -111,17 +114,20 @@ public class ptx_inter {
     ks = new Keystone(_myParent);
     surface = ks.createCornerPinSurface(wFrameFbo, hFrameFbo, 20);
     
-    // Load configuration file
-    File f = new File(dataPath("config.json"));
-    if (!f.exists()) saveConfig();
-    else             loadConfig();
+    idCam = loadJSONObject("data/config.json").getInt("idCam");
 
     mFbo = createGraphics(wFrameFbo, hFrameFbo, P3D);
     myCam.resize(wFrameFbo, hFrameFbo);
     
     myCam.startFromId(idCam, _myParent);
-    calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
 
+    // Load configuration file
+    File f = new File(dataPath("config.json"));
+    if (!f.exists()) saveConfig("data/config.json");
+    else             loadConfig("data/config.json");
+    
+    calculateHomographyMatrice(wFrameFbo, hFrameFbo, myCam.ROI);
+    
     // First scan (check if not over kill, already one update in file)
     //    myCam.update(); myCam.update(); myCam.update(); myCam.update(); myCam.update();
     scanCam();
@@ -183,8 +189,8 @@ public class ptx_inter {
    */
   void displayFBO() {
 
-    if(withFlash && isScanning && myGlobState != globState.CAMERA)
-      translate(0,0,marginFlash);
+    //if(withFlash && isScanning && myGlobState != globState.CAMERA)
+    //  translate(0,0,marginFlash);
     
     surface.render(mFbo);
   }
@@ -458,7 +464,7 @@ public class ptx_inter {
       mFbo.beginShape(QUADS);
       for (int i = 0; i < 360; i++) {
         mFbo.fill(i, 360, 360, 150);
-        int val = 140 + myPtx.histHue[i];
+        int val = floor(140 + myPtx.histHue[i] * 0.25);
 
         mFbo.vertex(140 * cos(2 * PI*float(i)     / 360), 140 * sin(2 * PI*float(i)     / 360));
         mFbo.vertex(140 * cos(2 * PI*float(i + 1) / 360), 140 * sin(2 * PI*float(i + 1) / 360));
@@ -584,7 +590,7 @@ public class ptx_inter {
 
     whiteCtp++;
 
-    if (isInConfig && myGlobState == globState.CAMERA) {
+    if (!withFlash && isInConfig && myGlobState == globState.CAMERA) {
 
       mFbo.background(0.3f, 0.3f, 0.3f);
 
@@ -633,25 +639,40 @@ public class ptx_inter {
   void displayDebugIntel() {
 
     //Values
-    String debugStr = "-----\n"
-      + "GrayTop & Down: "  + grayLevelUp + " / " + grayLevelDown + "\n"
-      + "Luminance: " + myPtx.seuilValue + "\n"
-      + "Saturation: " + int(100*myPtx.seuilSaturation)/100.0 + "\n"
-      + "CamExp: " + myCam.getExposure() + "\n"
-      + "CamSat: " + myCam.getSaturation()  + "\n";
+    String debugStr = "--- \n"
+      + " a  - Luminance: " + myPtx.seuilValue + "\n"
+      + " z  - Saturation: " + int(100*myPtx.seuilSaturation)/100.0 + "\n"
+      + "e/r - GrayTop & Down: "  + grayLevelUp + " / " + grayLevelDown + "\n"
+      + "--- Camera\n"
+      + " d  - Exposure    : " + myCam.modCam("get", "exposure_absolute", 0) + "\n"
+      + " f  - Saturation  : " + myCam.modCam("get", "saturation", 0)  + "\n"
+      + " g  - Brightness  : " + myCam.modCam("get", "brightness", 0) + "\n"
+      + " h  - Contrast    : " + myCam.modCam("get", "contrast", 0) + "\n"
+      + " j  - Temperature : " + myCam.modCam("get", "white_balance_temperature", 0) + "\n";
 
 
     if (debugType == 2) {
-      mFbo.textAlign(LEFT);
-      mFbo.text(debugStr, 20, 80);
+      if (myPtxInter.myGlobState == globState.CAMERA && myPtxInter.myCamState == cameraState.CAMERA_WHOLE && !isScanning ) {
+        textAlign(LEFT);
+        text(debugStr, 20, 80);    
+      } else {
+        mFbo.textAlign(LEFT);
+        mFbo.text(debugStr, 20, 80);
+      }
     } 
 
     if (debugType == 3) {
-      mFbo.textAlign(RIGHT);
-      mFbo.text(debugStr, wFrameFbo - 20, 80);
+      if (myPtxInter.myGlobState == globState.CAMERA && myPtxInter.myCamState == cameraState.CAMERA_WHOLE && !isScanning ) {
+        textAlign(RIGHT);
+        text(debugStr, wFrameFbo - 20, 80);
+      } else {
+        mFbo.textAlign(RIGHT);
+        mFbo.text(debugStr, wFrameFbo - 20, 80);
+      }
     } 
 
     mFbo.textAlign(LEFT);
+    textAlign(LEFT);
   }
 
   /** 
@@ -709,7 +730,7 @@ public class ptx_inter {
   /** 
    * Save all parametrs in a predifined file (data/config.json)
    */
-  void saveConfig() {
+  void saveConfig(String _filePath) {
     println("Config Saved!");
     
     //Save key stone
@@ -753,19 +774,26 @@ public class ptx_inter {
 
     json.setInt("idCam", idCam);
 
-    saveJSONObject(json, "data/config.json");
+    json.setInt("cam_exposure", myCam.modCam("get", "exposure_absolute", 0) );
+    json.setInt("cam_saturation", myCam.modCam("get", "saturation", 0) );
+    json.setInt("cam_brightness", myCam.modCam("get", "brightness", 0) );
+    json.setInt("cam_contrast", myCam.modCam("get", "contrast", 0) );
+    json.setInt("cam_temperature", myCam.modCam("get", "white_balance_temperature", 0) );
+
+    
+    saveJSONObject(json, _filePath);
   }
 
 
   /** 
    * Load all parametrs from a predifined file (data/config.json)
    */
-  void loadConfig() {
+  void loadConfig(String _filePath) {
 
     //load keystone
     ks.load("./data/configKeyStone.xml");
     
-    JSONObject json = loadJSONObject("data/config.json");
+    JSONObject json = loadJSONObject(_filePath);
 
     myPtx.seuilSaturation = json.getFloat("seuilSaturation");
     myPtx.seuilValue      = json.getFloat("seuilValue");
@@ -817,9 +845,16 @@ public class ptx_inter {
     myPtx.seuil_smallArea = json.getInt("seuil_smallArea");
 
 
-    idCam = loadJSONObject("data/config.json").getInt("idCam");
+    idCam = loadJSONObject(_filePath).getInt("idCam");
+    
+    
+    myCam.modCam("set", "exposure_absolute", floor(json.getFloat("cam_exposure")) );
+    myCam.modCam("set", "saturation", floor(json.getFloat("cam_saturation")) );
+    myCam.modCam("set", "brightness", floor(json.getFloat("cam_brightness")) );
+    myCam.modCam("set", "contrast", floor(json.getFloat("cam_contrast")) );
+    myCam.modCam("set", "white_balance_temperature", floor(json.getFloat("cam_temperature")) );  
+    
   }
-
 
   void managementKeyPressed() {
      // MANAGEMENT KEYS (FK_F** - 5), the -5 is here because of a weird behavior of P3D for keymanagement
@@ -868,7 +903,7 @@ public class ptx_inter {
       myPtx.verboseImg = true;
       if ( myGlobState == globState.RECOG) {
         switch(  myRecogState ) {
-        case RECOG_FLASH:     myRecogState = recogState.RECOG_ROI;     break;
+        case RECOG_FLASH:    myRecogState = recogState.RECOG_ROI;      break;
         case RECOG_ROI:      myRecogState = recogState.RECOG_BACK;     break;
         case RECOG_BACK:     myRecogState = recogState.RECOG_COL;      break;
         case RECOG_COL:      myRecogState = recogState.RECOG_AREA;     break;
@@ -923,8 +958,9 @@ public class ptx_inter {
 
     switch(key) {
     //Save/Load Config
-    case 'w': saveConfig(); strUI = "Config Saved!"; togUI.reset(true); break;
-    case 'x': loadConfig(); strUI = "Config Loaded!"; togUI.reset(true); break;
+    case 'w': saveConfig("data/config.json"); strUI = "Config Saved!"; togUI.reset(true); break;
+    case 'x': loadConfig("data/config.json"); strUI = "Config Loaded!"; togUI.reset(true); break;
+    case 'X': loadConfig("data/config_ref_1.json"); strUI = "Config Loaded!"; togUI.reset(true); break;
 
     case 'A': case 'a':
       if(key == 'a') myPtx.seuilValue  = Math.max(  0.f, myPtx.seuilValue + 1);
@@ -944,11 +980,17 @@ public class ptx_inter {
     case 'e': grayLevelUp  = Math.min(255, grayLevelUp +3);    break;
     case 'R': grayLevelDown = Math.max(  0, grayLevelDown -3); break;
     case 'r': grayLevelDown = Math.min(255, grayLevelDown +3); break;
-
-    case 'd': myCam.addSaturation(2);  break;
-    case 'D': myCam.addSaturation(-2); break;
-    case 'f': myCam.addExposure(10);    break;
-    case 'F': myCam.addExposure(-10);   break;
+      
+    case 'd': myCam.modCam("add", "exposure_absolute",  10); myCam.update(); break;
+    case 'D': myCam.modCam("add", "exposure_absolute", -10); myCam.update(); break;
+    case 'f': myCam.modCam("add", "saturation",  2);         myCam.update(); break;
+    case 'F': myCam.modCam("add", "saturation", -2);         myCam.update(); break;
+    case 'g': myCam.modCam("add", "brightness",  2);         myCam.update(); break;
+    case 'G': myCam.modCam("add", "brightness", -2);         myCam.update(); break;
+    case 'h': myCam.modCam("add", "contrast",  2);           myCam.update(); break;
+    case 'H': myCam.modCam("add", "contrast", -2);           myCam.update(); break;
+    case 'j': myCam.modCam("add", "white_balance_temperature", 50);  myCam.update(); break;
+    case 'J': myCam.modCam("add", "white_balance_temperature", -50); myCam.update(); break;
 
     case 'S': case 's':
       if (myPtx.indexHue%2 != 0)

@@ -163,6 +163,7 @@ public class cam {
     } else {
       println("DEFAULT CAM");
       camStr = cameras[0];
+      camId = 0;
     }
 
     println(_idCam + " / Camera: " + camStr);
@@ -178,19 +179,34 @@ public class cam {
     cpt.start();
 
     while (cpt.width * cpt.height == 0) {     
+      try{Thread.sleep(10);}catch(InterruptedException e){System.out.println(e);}  
+      print("Waiting for camera with non null values\n");
       update();
-      print("Waiting for camera with non null values ");
     }
 
     wCam = cpt.width;
     hCam = cpt.height;
     mImg = createImage(wCam, hCam, RGB);
 
+    parametriseCamera();
+    loadCamConfig();
     switchToManual();
     update();
     update();
   }
 
+  void loadCamConfig() {
+    
+    JSONObject json = loadJSONObject("data/config.json");
+
+    modCam("set", "exposure_absolute", floor(json.getFloat("cam_exposure")) );
+    modCam("set", "saturation", floor(json.getFloat("cam_saturation")) );
+    modCam("set", "brightness", floor(json.getFloat("cam_brightness")) );
+    modCam("set", "contrast", floor(json.getFloat("cam_contrast")) );
+    modCam("set", "white_balance_temperature", floor(json.getFloat("cam_temperature")) );  
+    
+  }
+  
   /** 
    * Get another image from the camera stream if possible
    * @return          <code>true</code> if the camera is availabe. 
@@ -243,64 +259,38 @@ public class cam {
       exe(setCmd+"exposure_auto_priority=0");
       exe(setCmd+"focus_auto=0");
       exe(setCmd+"exposure_auto=0");
+      exe(setCmd+"gain=0");
     }
   }
 
-  int getSaturation() {
-    if (  System.getProperty("os.name").contains("Linux") ) {      
-      String satStr = exe("v4l2-ctl -d /dev/video"+camVideoId+" --get-ctrl saturation");
-
-      if ( satStr.contains("unknown") ) {
-        println("Camera doesn't have the parametre saturation");
-        return -1;
-      }
-      return Integer.parseInt( split(satStr, ' ')[1] );
-    }
-    return -1;
-  }
-
-  int getExposure() {
-    if (  System.getProperty("os.name").contains("Linux") ) {
-      String expStr = exe("v4l2-ctl -d /dev/video"+camVideoId+" --get-ctrl exposure_absolute");
-
-      if ( expStr.contains("unknown") ) {
-        println("Camera doesn't have the parametre saturation");
-        return -1;
-      }
-      return Integer.parseInt( split(expStr, ' ')[1] );
-    }
-    return -1;
-  }
-
-  void addSaturation(int n) {
-    if (  System.getProperty("os.name").contains("Linux") ) {
-      String setCmd = "v4l2-ctl -d /dev/video"+camVideoId+" --set-ctrl ";
-      String getCmd = "v4l2-ctl -d /dev/video"+camVideoId+" --get-ctrl ";
-
-      String satStr = exe(getCmd+"saturation");
-
-      if ( satStr.contains("unknown") ) {
-        println("Camera doesn't have the parametre saturation");
-        return;
-      }
-      int satVal = Integer.parseInt( split(satStr, ' ')[1] ) + n;
-      exe(setCmd+"saturation="+satVal);
-    }
-  }
-
-  void addExposure(int n) {
+  int modCam(String _action, String _param, int _val) {
+    
     if (  System.getProperty ("os.name").contains("Linux") ) {
       String setCmd = "v4l2-ctl -d /dev/video"+camVideoId+" --set-ctrl ";
       String getCmd = "v4l2-ctl -d /dev/video"+camVideoId+" --get-ctrl ";
 
-      String expStr = exe(getCmd+"exposure_absolute");
-      if ( expStr.contains("unknown") ) {
+      String paramStr = exe(getCmd+_param);
+      if ( paramStr.contains("unknown") ) {
         println("Camera doesn't have the parametre exposure");
-        return;
+        return -1;
       }
-      int expVal = Integer.parseInt( split(expStr, ' ')[1] ) + n;
-      exe(setCmd+"exposure_absolute="+expVal);
+        
+      int paramVal = Integer.parseInt( split(paramStr, ' ')[1] );
+      
+      if(_action.equals("add")) {
+        int newval = paramVal + _val;
+        exe(setCmd+_param+"=" + newval);
+      } else if(_action.equals("set")) {
+        exe(setCmd+_param+"="+_val);
+      }
+      
+      paramStr = exe(getCmd+_param);
+      return Integer.parseInt( split(paramStr, ' ')[1] );
+
     }
+    
+    return -1;
+    
   }  
 
   void switchToManual() {
@@ -310,6 +300,7 @@ public class cam {
       exe("v4l2-ctl -d /dev/video"+camVideoId+" --set-ctrl exposure_auto_priority=0");
       exe("v4l2-ctl -d /dev/video"+camVideoId+" --set-ctrl focus_auto=0");
       exe("v4l2-ctl -d /dev/video"+camVideoId+" --set-ctrl exposure_auto=1");
+      exe("v4l2-ctl -d /dev/video"+camVideoId+" --set-ctrl gain=0");
     }
   }
 
